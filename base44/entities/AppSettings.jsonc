@@ -75,6 +75,7 @@
         "premium",
         "stealth",
         "external",
+        "pool",
         "none"
       ],
       "default": "premium",
@@ -88,6 +89,10 @@
     "external_proxy_id": {
       "type": "string",
       "description": "ID of Proxy entity for external proxy mode"
+    },
+    "proxy_pool_id": {
+      "type": "string",
+      "description": "ID of ProxyPool entity for pooled external proxy mode"
     },
     "block_ads": {
       "type": "boolean",

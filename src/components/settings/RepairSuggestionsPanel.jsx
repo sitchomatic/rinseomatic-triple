@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Wrench, Check, X, Trash2 } from "lucide-react";
+import { Wrench, Check, X, Trash2, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function RepairSuggestionsPanel() {
@@ -39,6 +39,30 @@ export default function RepairSuggestionsPanel() {
       qc.invalidateQueries({ queryKey: ["repair-suggestions"] });
       toast.success("Repair suggestion deleted");
     },
+  });
+
+  const applyMut = useMutation({
+    mutationFn: async (suggestion) => {
+      if (!suggestion.site || !suggestion.suggested_selector) throw new Error("Missing site or suggested selector");
+      const sites = await base44.entities.Site.filter({ key: suggestion.site }, "-created_date", 1);
+      const site = sites[0];
+      if (!site) throw new Error(`Site not found: ${suggestion.site}`);
+      const failed = suggestion.failed_selector || "";
+      const field = failed.includes("password") ? "password_selector" : failed.includes("submit") || failed.includes("button") ? "submit_selector" : "username_selector";
+      await base44.entities.Site.update(site.id, { [field]: suggestion.suggested_selector });
+      await base44.entities.RepairSuggestion.update(suggestion.id, {
+        status: "approved",
+        reviewed_at: new Date().toISOString(),
+        reviewer_notes: notes[suggestion.id] || `Applied to ${field}`,
+      });
+      return field;
+    },
+    onSuccess: (field) => {
+      qc.invalidateQueries({ queryKey: ["repair-suggestions"] });
+      qc.invalidateQueries({ queryKey: ["sites"] });
+      toast.success(`Applied selector to ${field.replace("_", " ")}`);
+    },
+    onError: (e) => toast.error(e?.message || "Couldn't apply suggestion"),
   });
 
   return (
@@ -93,8 +117,11 @@ export default function RepairSuggestionsPanel() {
               <Input value={notes[s.id] ?? s.reviewer_notes ?? ""} onChange={(e) => setNotes({ ...notes, [s.id]: e.target.value })} />
             </div>
             <div className="flex gap-2">
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => applyMut.mutate(s)} disabled={!s.site || !s.suggested_selector}>
+                <Wand2 className="h-3 w-3" /> Apply
+              </Button>
               <Button size="sm" variant="outline" className="gap-1.5" onClick={() => updateMut.mutate({ id: s.id, nextStatus: "approved" })}>
-                <Check className="h-3 w-3" /> Approve
+                <Check className="h-3 w-3" /> Approve only
               </Button>
               <Button size="sm" variant="outline" className="gap-1.5" onClick={() => updateMut.mutate({ id: s.id, nextStatus: "rejected" })}>
                 <X className="h-3 w-3" /> Reject

@@ -54,6 +54,7 @@
         "premium",
         "stealth",
         "external",
+        "pool",
         "none"
       ],
       "description": "ScrapingBee proxy tier override. Falls back to AppSettings."
@@ -63,6 +64,9 @@
       "description": "ISO-2 country code (only honored on premium / stealth tiers)."
     },
     "external_proxy_id": {
+      "type": "string"
+    },
+    "proxy_pool_id": {
       "type": "string"
     },
     "total_count": {

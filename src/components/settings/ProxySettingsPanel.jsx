@@ -14,10 +14,11 @@ const PROXY_MODES = [
   { value: "premium", label: "Premium (residential, 25 credits)", help: "ScrapingBee premium_proxy=true. Residential IPs. Required for country targeting." },
   { value: "stealth", label: "Stealth (75 credits)", help: "ScrapingBee stealth_proxy=true. Hardest sites. Most expensive." },
   { value: "external", label: "External proxy (own_proxy)", help: "Your own HTTP/SOCKS proxy from the list below. Sent as own_proxy param." },
+  { value: "pool", label: "Proxy pool", help: "Automatically picks an enabled proxy from a configured proxy pool." },
   { value: "none", label: "None (direct, no JS)", help: "render_js=false direct fetch. 1 credit. Won't work for JS-heavy logins." },
 ];
 
-export default function ProxySettingsPanel({ proxies = [] }) {
+export default function ProxySettingsPanel({ proxies = [], proxyPools = [] }) {
   const qc = useQueryClient();
   const { data: rows = [] } = useQuery({
     queryKey: ["app-settings"],
@@ -53,6 +54,7 @@ export default function ProxySettingsPanel({ proxies = [] }) {
 
   const mode = draft.proxy_mode || "premium";
   const needsExternal = mode === "external";
+  const needsPool = mode === "pool";
   const supportsCountry = mode === "premium" || mode === "stealth";
 
   return (
@@ -105,6 +107,22 @@ export default function ProxySettingsPanel({ proxies = [] }) {
               <SelectContent>
                 {proxies.filter((p) => p.enabled).map((p) => (
                   <SelectItem key={p.id} value={p.id}>{p.label || `${p.host}:${p.port}`}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        )}
+
+        {needsPool && (
+          <Field label="Proxy pool" help="Picks a proxy from this enabled pool for each attempt.">
+            <Select
+              value={draft.proxy_pool_id || ""}
+              onValueChange={(v) => setDraft({ ...draft, proxy_pool_id: v })}
+            >
+              <SelectTrigger><SelectValue placeholder="Select pool…" /></SelectTrigger>
+              <SelectContent>
+                {proxyPools.filter((p) => p.enabled !== false).map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

@@ -55,6 +55,11 @@ export default function Settings() {
     queryFn: () => base44.entities.AppSettings.list("-created_date", 1),
     staleTime: 60_000,
   });
+  const { data: proxyPools = [] } = useQuery({
+    queryKey: ["proxy-pools"],
+    queryFn: () => base44.entities.ProxyPool.list("-created_date", 100),
+    staleTime: 60_000,
+  });
 
   const [draft, setDraft] = useState(BLANK);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -111,7 +116,7 @@ export default function Settings() {
         {appSettings[0]?.provider === "browserless" && <BrowserlessSettingsPanel settings={appSettings[0]} />}
         {appSettings[0]?.provider === "scrapingbee" && (
           <>
-            <ProxySettingsPanel proxies={proxies} />
+            <ProxySettingsPanel proxies={proxies} proxyPools={proxyPools} />
             <DiagnosticsPanel />
             <ExternalProxiesManager proxies={proxies} />
             <ProxyPoolsManager proxies={proxies} />

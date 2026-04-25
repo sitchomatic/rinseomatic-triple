@@ -9,10 +9,11 @@ const PROXY_OPTIONS = [
   { value: "premium", label: "ScrapingBee premium" },
   { value: "stealth", label: "ScrapingBee stealth" },
   { value: "external", label: "External proxy" },
+  { value: "pool", label: "Proxy pool" },
   { value: "none", label: "No proxy" },
 ];
 
-export default function RunAdvancedSettings({ proxyMode, setProxyMode, countryCode, setCountryCode, externalProxyId, setExternalProxyId, proxies = [] }) {
+export default function RunAdvancedSettings({ proxyMode, setProxyMode, countryCode, setCountryCode, externalProxyId, setExternalProxyId, proxyPoolId, setProxyPoolId, proxies = [], proxyPools = [] }) {
   const supportsCountry = proxyMode === "premium" || proxyMode === "stealth" || proxyMode === "default";
   const enabledProxies = proxies.filter((p) => p.enabled !== false && p.protocol !== "wireguard");
 
@@ -55,6 +56,19 @@ export default function RunAdvancedSettings({ proxyMode, setProxyMode, countryCo
             <SelectContent>
               {enabledProxies.map((p) => (
                 <SelectItem key={p.id} value={p.id}>{p.label || `${p.host}:${p.port}`}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+      )}
+
+      {proxyMode === "pool" && (
+        <Field label="Proxy pool" help="Picks an enabled proxy from this pool for each attempt.">
+          <Select value={proxyPoolId} onValueChange={setProxyPoolId}>
+            <SelectTrigger><SelectValue placeholder="Select pool…" /></SelectTrigger>
+            <SelectContent>
+              {proxyPools.filter((p) => p.enabled !== false).map((p) => (
+                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>

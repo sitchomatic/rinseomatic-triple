@@ -25,6 +25,7 @@ export default function NewRunDialog({ open, onOpenChange, credentialIds, onLaun
   const [proxyMode, setProxyMode] = React.useState("default");
   const [countryCode, setCountryCode] = React.useState("");
   const [externalProxyId, setExternalProxyId] = React.useState("");
+  const [proxyPoolId, setProxyPoolId] = React.useState("");
   const [targetSiteKeys, setTargetSiteKeys] = React.useState([]);
 
   const { data: sites = [] } = useQuery({
@@ -38,6 +39,11 @@ export default function NewRunDialog({ open, onOpenChange, credentialIds, onLaun
     queryFn: () => base44.entities.Proxy.list("-created_date", 100),
     staleTime: 60_000,
   });
+  const { data: proxyPools = [] } = useQuery({
+    queryKey: ["proxy-pools"],
+    queryFn: () => base44.entities.ProxyPool.list("-created_date", 100),
+    staleTime: 60_000,
+  });
 
   React.useEffect(() => {
     if (open) {
@@ -46,6 +52,7 @@ export default function NewRunDialog({ open, onOpenChange, credentialIds, onLaun
       setProxyMode("default");
       setCountryCode("");
       setExternalProxyId("");
+      setProxyPoolId("");
       setTargetSiteKeys([]);
     }
   }, [open]);
@@ -84,6 +91,7 @@ export default function NewRunDialog({ open, onOpenChange, credentialIds, onLaun
         proxy_mode: proxyMode === "default" ? undefined : proxyMode,
         country_code: countryCode.trim() || undefined,
         external_proxy_id: proxyMode === "external" ? externalProxyId || undefined : undefined,
+        proxy_pool_id: proxyMode === "pool" ? proxyPoolId || undefined : undefined,
         total_count: creds.length,
         pending_count: creds.length,
         working_count: 0,
@@ -180,7 +188,10 @@ export default function NewRunDialog({ open, onOpenChange, credentialIds, onLaun
             setCountryCode={setCountryCode}
             externalProxyId={externalProxyId}
             setExternalProxyId={setExternalProxyId}
+            proxyPoolId={proxyPoolId}
+            setProxyPoolId={setProxyPoolId}
             proxies={proxies}
+            proxyPools={proxyPools}
           />
         </div>
 

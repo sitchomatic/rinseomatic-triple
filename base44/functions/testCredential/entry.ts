@@ -76,6 +76,26 @@ async function resolveProxy(base44, runProxy, settings) {
       if (rows[0]) out.external = rows[0];
     }
   }
+  if (mode === 'pool') {
+    const poolId = runProxy?.proxy_pool_id || settings.proxy_pool_id;
+    if (poolId) {
+      const pools = await base44.asServiceRole.entities.ProxyPool.filter({ id: poolId });
+      const pool = pools[0];
+      const ids = pool?.proxy_ids || [];
+      if (ids.length > 0) {
+        const rows = await Promise.all(ids.map((id) => base44.asServiceRole.entities.Proxy.filter({ id })));
+        const candidates = rows.map((r) => r[0]).filter((p) => p && p.enabled !== false && p.protocol !== 'wireguard' && p.status !== 'down');
+        if (candidates.length > 0) {
+          candidates.sort((a, b) => {
+            if (pool.rotation_strategy === 'least_latency') return (a.latency_ms || 999999) - (b.latency_ms || 999999);
+            if (pool.rotation_strategy === 'weighted') return (b.rotation_weight || 1) - (a.rotation_weight || 1);
+            return Math.random() - 0.5;
+          });
+          out.external = candidates[0];
+        }
+      }
+    }
+  }
   return out;
 }
 
@@ -93,7 +113,7 @@ function buildScrapingBeeUrl({ apiKey, targetUrl, jsScenario, settings, proxy })
   } else if (proxy.mode === 'stealth') {
     params.set('stealth_proxy', 'true');
     if (proxy.country_code) params.set('country_code', proxy.country_code);
-  } else if (proxy.mode === 'external' && proxy.external) {
+  } else if ((proxy.mode === 'external' || proxy.mode === 'pool') && proxy.external) {
     const { host, port, protocol, username, password } = proxy.external;
     if (host && port) {
       const scheme = protocol || 'http';

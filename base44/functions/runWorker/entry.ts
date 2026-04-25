@@ -67,6 +67,7 @@ async function testOne(base44, site, result, run) {
         proxy_mode: run.proxy_mode,
         country_code: run.country_code,
         external_proxy_id: run.external_proxy_id,
+        proxy_pool_id: run.proxy_pool_id,
       },
     });
 
