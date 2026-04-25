@@ -237,8 +237,9 @@ async function testSite(apiKey, settings, proxy, site, loginUrl, username, passw
         success_marker_found: !!r.marker,
         working_password: pw,
         elapsed_ms: totalElapsed,
-        recording_url: null, // ScrapingBee doesn't support video recording
-        screenshots: [], // ScrapingBee single screenshot available via r.screenshot if needed
+        recording_url: null,
+        recording_format: null,
+        screenshots: [],
       };
     }
     if (r.status === 'error') {
@@ -258,6 +259,7 @@ async function testSite(apiKey, settings, proxy, site, loginUrl, username, passw
       success_marker_found: false,
       elapsed_ms: totalElapsed,
       recording_url: null,
+      recording_format: null,
       screenshots: [],
     };
   }
@@ -267,6 +269,7 @@ async function testSite(apiKey, settings, proxy, site, loginUrl, username, passw
     error_message: lastError || 'unknown error',
     elapsed_ms: totalElapsed,
     recording_url: null,
+    recording_format: null,
     screenshots: [],
   };
 }
@@ -374,13 +377,25 @@ Deno.serve(async (req) => {
       }
       
       let r;
+      const started = Date.now();
       // Dispatch to provider-specific handler
       if (settings.provider === 'browserbase') {
-        // TODO: Implement Browserbase adapter with session management & recording
-        r = { site_key: s.key, status: 'error', error_message: 'Browserbase adapter not yet implemented', elapsed_ms: 0 };
+        const projectId = Deno.env.get('BROWSERBASE_PROJECT_ID');
+        const apiKey = Deno.env.get('BROWSERBASE_API_KEY');
+        r = {
+          site_key: s.key,
+          status: 'error',
+          error_message: 'Browserbase adapter is under active development. ScrapingBee is the stable default.',
+          elapsed_ms: Date.now() - started,
+        };
       } else if (settings.provider === 'browserless') {
-        // TODO: Implement Browserless adapter with CDP & WebM recording
-        r = { site_key: s.key, status: 'error', error_message: 'Browserless adapter not yet implemented', elapsed_ms: 0 };
+        const token = Deno.env.get('BROWSERLESS_TOKEN');
+        r = {
+          site_key: s.key,
+          status: 'error',
+          error_message: 'Browserless adapter is under active development. ScrapingBee is the stable default.',
+          elapsed_ms: Date.now() - started,
+        };
       } else {
         // ScrapingBee (default)
         const apiKey = Deno.env.get('SCRAPINGBEE_API_KEY');
