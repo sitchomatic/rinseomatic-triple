@@ -14,6 +14,12 @@ import Settings from '@/pages/Settings';
 import Audit from '@/pages/Audit.jsx';
 import Schedule from '@/pages/Schedule.jsx';
 import Analytics from '@/pages/Analytics.jsx';
+import { initializeTerminalLogging } from '@/lib/terminalSetup';
+
+// Initialize terminal logging on app startup
+if (typeof window !== 'undefined') {
+  initializeTerminalLogging();
+}
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();

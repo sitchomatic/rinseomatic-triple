@@ -42,18 +42,39 @@ export default function TerminalPanel({ isOpen, onClose }) {
       originalWarn.current(...args);
     };
 
-    // Intercept fetch requests
+    // Intercept fetch requests with full request/response bodies
     const originalFetch = window.fetch;
     window.fetch = async (...args) => {
       const [resource, config] = args;
-      addLog("network", [`→ ${String(resource).slice(0, 100)}`]);
+      const method = (config?.method || "GET").toUpperCase();
+      const url = String(resource);
+      
+      addLog("network", [`→ ${method} ${url}`]);
+      if (config?.body) {
+        try {
+          const body = typeof config.body === "string" ? JSON.parse(config.body) : config.body;
+          addLog("network", [`  REQUEST: ${JSON.stringify(body).slice(0, 200)}`]);
+        } catch (_) {
+          addLog("network", [`  REQUEST: ${String(config.body).slice(0, 200)}`]);
+        }
+      }
+      
       try {
         const response = await originalFetch(...args);
         const cloned = response.clone();
-        addLog("network", [`← ${response.status} ${String(resource).slice(0, 100)}`]);
+        addLog("network", [`← ${response.status} ${response.statusText} ${url}`]);
+        
+        try {
+          const contentType = response.headers.get("content-type");
+          if (contentType?.includes("application/json")) {
+            const text = await cloned.text();
+            addLog("network", [`  RESPONSE: ${text.slice(0, 300)}`]);
+          }
+        } catch (_) {}
+        
         return response;
       } catch (e) {
-        addLog("error", [`✗ Fetch error: ${e.message}`]);
+        addLog("error", [`✗ Fetch error: ${e.message} (${url})`]);
         throw e;
       }
     };
