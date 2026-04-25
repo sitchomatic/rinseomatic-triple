@@ -12,6 +12,8 @@ import BrowserbaseSettingsPanel from "@/components/settings/BrowserbaseSettingsP
 import BrowserlessSettingsPanel from "@/components/settings/BrowserlessSettingsPanel";
 import ProxySettingsPanel from "@/components/settings/ProxySettingsPanel.jsx";
 import ExternalProxiesManager from "@/components/settings/ExternalProxiesManager";
+import ProxyPoolsManager from "@/components/settings/ProxyPoolsManager";
+import RepairSuggestionsPanel from "@/components/settings/RepairSuggestionsPanel";
 import DiagnosticsPanel from "@/components/settings/DiagnosticsPanel";
 import CredentialsStatusPanel from "@/components/settings/CredentialsStatusPanel";
 import SiteSandbox from "@/components/settings/SiteSandbox";
@@ -112,6 +114,8 @@ export default function Settings() {
             <ProxySettingsPanel proxies={proxies} />
             <DiagnosticsPanel />
             <ExternalProxiesManager proxies={proxies} />
+            <ProxyPoolsManager proxies={proxies} />
+            <RepairSuggestionsPanel />
           </>
         )}
       </div>
