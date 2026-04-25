@@ -106,12 +106,9 @@ Deno.serve(async (req) => {
       return Response.json({ done: true, status: run.status });
     }
 
-    // L1 fix: Stuck-recovery via cheap probe instead of a 5k-row scan.
-    // We only need the SINGLE most recently tested row. If THAT row's
-    // tested_at is fresher than IDLE_MAX_MS ago, we're not stuck — bail.
-    // Only when the cheap probe says "looks idle" do we pay for the full
-    // scan needed to enumerate the stuck rows.
-    const IDLE_MAX_MS = 5 * 60 * 1000;
+    // Stuck-recovery via cheap probe instead of a 5k-row scan.
+    const settingsRows = await base44.asServiceRole.entities.AppSettings.list('-created_date', 1);
+    const IDLE_MAX_MS = Math.max(1, Number(settingsRows[0]?.auto_heal_idle_minutes) || 5) * 60 * 1000;
     const now = Date.now();
     const startedAt = run.started_at ? new Date(run.started_at).getTime() : null;
     if (startedAt) {

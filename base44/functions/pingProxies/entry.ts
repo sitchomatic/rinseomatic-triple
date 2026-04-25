@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
     if (!token) return Response.json({ error: 'BROWSERLESS_TOKEN not set' }, { status: 500 });
 
     const settings = (await base44.asServiceRole.entities.AppSettings.list('-created_date', 1))[0] || {};
-    const region = settings.browserless_region || 'production-sfo';
+    const region = settings.browserless_endpoint || 'production-sfo';
 
     const proxies = await base44.asServiceRole.entities.Proxy.list('-created_date', 200);
     const targets = proxies.filter((p) => p.enabled !== false && p.host && p.port);

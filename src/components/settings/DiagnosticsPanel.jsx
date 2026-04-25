@@ -55,6 +55,7 @@ export default function DiagnosticsPanel() {
               <Row icon={Server} label="ASN / Org" value={result.org || result.asn || "—"} />
               <Row label="Provider" value="ScrapingBee" />
               <Row label="Proxy tier" value={result.proxy_mode} />
+              {result.proxy_source && <Row label="Proxy source" value={result.proxy_source} />}
               {result.probe_elapsed_ms != null && <Row label="Probe time" value={`${result.probe_elapsed_ms}ms`} />}
             </div>
           ) : (

@@ -75,22 +75,16 @@ async function healOneRun(base44, run, config) {
     const blockedRatio = blockedCount / errored.length;
 
     if (errorRate > highErrorRate && blockedRatio > 0.5) {
-      // Rotate: flip sticky off + cycle preset. Conservative — we don't change
-      // country, just force fresh IPs on the next claimed batches.
-      const update = {};
-      if (run.proxy_sticky !== false) update.proxy_sticky = false;
-      if (run.proxy_preset === 'none' || !run.proxy_preset) update.proxy_preset = 'px_ipv6';
-      else update.proxy_preset = 'none';
-      if (Object.keys(update).length > 0) {
-        await base44.asServiceRole.entities.TestRun.update(run.id, update);
-        summary.rotated_proxy = true;
-        summary.notes.push(`Rotated proxy: sticky=${update.proxy_sticky}, preset=${update.proxy_preset}`);
-        await log(
-          base44,
-          `Auto-heal: rotated proxy for run ${run.id} (error rate ${(errorRate*100).toFixed(0)}%, blocked ratio ${(blockedRatio*100).toFixed(0)}%)`,
-          'warn'
-        );
-      }
+      const currentMode = run.proxy_mode || config.proxy_mode || 'premium';
+      const nextMode = currentMode === 'stealth' ? 'premium' : 'stealth';
+      await base44.asServiceRole.entities.TestRun.update(run.id, { proxy_mode: nextMode });
+      summary.rotated_proxy = true;
+      summary.notes.push(`Rotated proxy mode: ${currentMode} → ${nextMode}`);
+      await log(
+        base44,
+        `Auto-heal: rotated proxy mode for run ${run.id} (${currentMode} → ${nextMode}, error rate ${(errorRate*100).toFixed(0)}%, blocked ratio ${(blockedRatio*100).toFixed(0)}%)`,
+        'warn'
+      );
     }
   }
 

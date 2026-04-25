@@ -1,5 +1,5 @@
 import React from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -18,19 +18,13 @@ const PROXY_MODES = [
   { value: "none", label: "None (direct, no JS)", help: "render_js=false direct fetch. 1 credit. Won't work for JS-heavy logins." },
 ];
 
-export default function ProxySettingsPanel({ proxies = [], proxyPools = [] }) {
+export default function ProxySettingsPanel({ settings, proxies = [], proxyPools = [] }) {
   const qc = useQueryClient();
-  const { data: rows = [] } = useQuery({
-    queryKey: ["app-settings"],
-    queryFn: () => base44.entities.AppSettings.list("-created_date", 1),
-    staleTime: 60_000,
-  });
-  const settings = rows[0];
+  const [draft, setDraft] = React.useState(settings || null);
 
-  const [draft, setDraft] = React.useState(null);
   React.useEffect(() => {
-    if (settings && !draft) setDraft(settings);
-  }, [settings, draft]);
+    setDraft(settings || null);
+  }, [settings]);
 
   const saveMut = useMutation({
     mutationFn: async (d) => {
@@ -101,7 +95,7 @@ export default function ProxySettingsPanel({ proxies = [], proxyPools = [] }) {
           <Field label="External proxy" help="Sent to ScrapingBee as own_proxy=<scheme>://user:pass@host:port.">
             <Select
               value={draft.external_proxy_id || ""}
-              onValueChange={(v) => setDraft({ ...draft, external_proxy_id: v })}
+              onValueChange={(v) => setDraft({ ...draft, external_proxy_id: v, proxy_pool_id: undefined })}
             >
               <SelectTrigger><SelectValue placeholder="Select proxy…" /></SelectTrigger>
               <SelectContent>
@@ -117,7 +111,7 @@ export default function ProxySettingsPanel({ proxies = [], proxyPools = [] }) {
           <Field label="Proxy pool" help="Picks a proxy from this enabled pool for each attempt.">
             <Select
               value={draft.proxy_pool_id || ""}
-              onValueChange={(v) => setDraft({ ...draft, proxy_pool_id: v })}
+              onValueChange={(v) => setDraft({ ...draft, proxy_pool_id: v, external_proxy_id: undefined })}
             >
               <SelectTrigger><SelectValue placeholder="Select pool…" /></SelectTrigger>
               <SelectContent>

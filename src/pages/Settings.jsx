@@ -118,7 +118,7 @@ export default function Settings() {
         {appSettings[0]?.provider === "browserless" && <BrowserlessSettingsPanel settings={appSettings[0]} />}
         {appSettings[0]?.provider === "scrapingbee" && (
           <>
-            <ProxySettingsPanel proxies={proxies} proxyPools={proxyPools} />
+            <ProxySettingsPanel settings={appSettings[0]} proxies={proxies} proxyPools={proxyPools} />
             <DiagnosticsPanel />
             <ExternalProxiesManager proxies={proxies} />
             <ProxyPoolsManager proxies={proxies} />

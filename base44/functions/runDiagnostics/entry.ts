@@ -19,7 +19,36 @@ async function logEvent(base44, f) {
   } catch (_e) {}
 }
 
-function buildScrapingBeeProbeUrl(apiKey, settings, override) {
+function buildProxyUrl(proxy) {
+  if (!proxy?.host || !proxy?.port) return null;
+  const scheme = proxy.protocol || 'http';
+  const auth = proxy.username
+    ? `${encodeURIComponent(proxy.username)}${proxy.password ? `:${encodeURIComponent(proxy.password)}` : ''}@`
+    : '';
+  return `${scheme}://${auth}${proxy.host}:${proxy.port}`;
+}
+
+async function resolveDiagnosticProxy(base44, mode, settings, override) {
+  if (mode === 'external') {
+    const id = override?.external_proxy_id || settings.external_proxy_id;
+    if (!id) return null;
+    const rows = await base44.asServiceRole.entities.Proxy.filter({ id });
+    return rows[0] || null;
+  }
+  if (mode === 'pool') {
+    const poolId = override?.proxy_pool_id || settings.proxy_pool_id;
+    if (!poolId) return null;
+    const pools = await base44.asServiceRole.entities.ProxyPool.filter({ id: poolId });
+    const ids = pools[0]?.proxy_ids || [];
+    const rows = await Promise.all(ids.map((id) => base44.asServiceRole.entities.Proxy.filter({ id })));
+    const candidates = rows.map((r) => r[0]).filter((p) => p && p.enabled !== false && p.protocol !== 'wireguard' && p.status !== 'down');
+    candidates.sort((a, b) => (a.latency_ms || 999999) - (b.latency_ms || 999999));
+    return candidates[0] || null;
+  }
+  return null;
+}
+
+function buildScrapingBeeProbeUrl(apiKey, settings, override, externalProxy) {
   const mode = override?.proxy_mode ?? settings.proxy_mode ?? 'premium';
   const country = (override?.country_code || settings.country_code || 'au').toLowerCase();
 
@@ -37,7 +66,10 @@ function buildScrapingBeeProbeUrl(apiKey, settings, override) {
     params.set('stealth_proxy', 'true');
     if (country) params.set('country_code', country);
   }
-  // 'classic' / 'none' / 'external' → no proxy params for the diagnostics probe.
+  if ((mode === 'external' || mode === 'pool') && externalProxy) {
+    const proxyUrl = buildProxyUrl(externalProxy);
+    if (proxyUrl) params.set('own_proxy', proxyUrl);
+  }
 
   return `${API_BASE}?${params.toString()}`;
 }
@@ -59,7 +91,9 @@ Deno.serve(async (req) => {
     const settingsRows = await base44.asServiceRole.entities.AppSettings.list('-created_date', 1);
     const settings = settingsRows[0] || {};
 
-    const url = buildScrapingBeeProbeUrl(apiKey, settings, override);
+    const mode = override?.proxy_mode ?? settings.proxy_mode ?? 'premium';
+    const externalProxy = await resolveDiagnosticProxy(base44, mode, settings, override);
+    const url = buildScrapingBeeProbeUrl(apiKey, settings, override, externalProxy);
     const started = Date.now();
     const res = await fetch(url, { method: 'GET' });
     const totalMs = Date.now() - started;
@@ -94,7 +128,8 @@ Deno.serve(async (req) => {
       provider: 'scrapingbee',
       browserless_reachable: true, // backward-compat key for the existing UI panel
       provider_reachable: true,
-      proxy_mode: override?.proxy_mode ?? settings.proxy_mode ?? 'premium',
+      proxy_mode: mode,
+      proxy_source: externalProxy ? (externalProxy.label || `${externalProxy.host}:${externalProxy.port}`) : null,
       country_requested: (override?.country_code || settings.country_code || 'au').toLowerCase(),
       ip: info.ip || null,
       country: info.country || null,
