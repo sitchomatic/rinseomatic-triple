@@ -15,7 +15,8 @@ import ExternalProxiesManager from "@/components/settings/ExternalProxiesManager
 import DiagnosticsPanel from "@/components/settings/DiagnosticsPanel";
 import CredentialsStatusPanel from "@/components/settings/CredentialsStatusPanel";
 import SiteSandbox from "@/components/settings/SiteSandbox";
-import { Plus, Trash2, Sparkles, Pencil, FlaskConical } from "lucide-react";
+import SelectorDiscovery from "@/components/settings/SelectorDiscovery";
+import { Plus, Trash2, Sparkles, Pencil, FlaskConical, Crosshair } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +54,7 @@ export default function Settings() {
   const [draft, setDraft] = useState(BLANK);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [sandboxSite, setSandboxSite] = useState(null);
+  const [showSelectorTool, setShowSelectorTool] = useState(false);
 
   const saveMut = useMutation({
     mutationFn: async (d) => {
@@ -149,6 +151,11 @@ export default function Settings() {
                     disabled={!s.login_url}
                     title={s.login_url ? "Run a one-off login attempt with sandbox credentials to verify the selectors work" : "This site has no login URL — selectors can't be tested directly"}>
                     <FlaskConical className="h-3 w-3" /> Test
+                  </Button>
+                  <Button variant="ghost" size="sm" className="gap-1.5"
+                    onClick={() => setShowSelectorTool(true)}
+                    title="Use visual inspector to discover selectors">
+                    <Crosshair className="h-3 w-3" /> Discover
                   </Button>
                   <Button variant="ghost" size="sm" className="gap-1.5"
                     onClick={() => setDraft(s)}
@@ -292,6 +299,18 @@ export default function Settings() {
         open={!!sandboxSite}
         onOpenChange={(v) => !v && setSandboxSite(null)}
         site={sandboxSite}
+      />
+
+      <SelectorDiscovery
+        open={showSelectorTool}
+        onOpenChange={setShowSelectorTool}
+        onSelectorFound={(selector) => {
+          if (draft.id) {
+            // If editing a site, optionally update the selector fields
+            toast.success(`Selector discovered: ${selector}`);
+            // User can manually copy/paste to the form fields
+          }
+        }}
       />
     </div>
   );

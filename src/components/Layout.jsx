@@ -1,6 +1,6 @@
 import React from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { LayoutDashboard, KeyRound, Play, Settings as SettingsIcon, Shield, Radio } from "lucide-react";
+import { LayoutDashboard, KeyRound, Play, Settings as SettingsIcon, Shield, Radio, Clock, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ThemeToggle from "@/components/ThemeToggle";
 
@@ -8,6 +8,8 @@ const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/credentials", label: "Credentials", icon: KeyRound },
   { to: "/runs", label: "Test runs", icon: Play },
+  { to: "/schedule", label: "Schedule", icon: Clock },
+  { to: "/analytics", label: "Analytics", icon: TrendingUp },
   { to: "/audit", label: "Audit log", icon: Radio },
   { to: "/settings", label: "Settings", icon: SettingsIcon },
 ];
@@ -16,6 +18,8 @@ const TITLES = {
   "/": "Dashboard · Credential Tester",
   "/credentials": "Credentials · Credential Tester",
   "/runs": "Test runs · Credential Tester",
+  "/schedule": "Schedule · Credential Tester",
+  "/analytics": "Analytics · Credential Tester",
   "/audit": "Audit log · Credential Tester",
   "/settings": "Settings · Credential Tester",
 };

@@ -73,6 +73,24 @@ export default function Credentials() {
     onError: (e) => toast.error(e?.message || "Delete failed"),
   });
 
+  // Bulk disable (tag for tracking, UI can hide them)
+  const disableMut = useMutation({
+    mutationFn: async (ids) => {
+      const arr = [...ids];
+      const CHUNK = 25;
+      for (let i = 0; i < arr.length; i += CHUNK) {
+        await Promise.all(arr.slice(i, i + CHUNK).map((id) => 
+          base44.entities.Credential.update(id, { disabled: true })
+        ));
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["credentials"] });
+      toast.success(`Disabled ${selected.size} credential${selected.size === 1 ? "" : "s"}`);
+      setSelected(new Set());
+    },
+  });
+
   const selectedCount = selected.size;
 
   return (
@@ -114,6 +132,14 @@ export default function Credentials() {
         {selectedCount > 0 && (
           <>
             <div className="text-xs font-mono text-muted-foreground">{selectedCount} selected</div>
+            <Button
+              size="sm" variant="outline"
+              className="gap-1.5"
+              onClick={() => disableMut.mutate([...selected])}
+              disabled={disableMut.isPending}
+            >
+              Disable {selectedCount}
+            </Button>
             <Button
               size="sm" variant="outline"
               className="gap-1.5 text-rose-300 hover:text-rose-200 hover:bg-rose-500/10 border-rose-500/30"
