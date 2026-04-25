@@ -1,22 +1,20 @@
-import { ScrapingBeeAdapter } from './adapters/scrapingbeeAdapter.js';
-import { BrowserlessAdapter } from './adapters/browserlessAdapter.js';
-import { BrowserbaseAdapter } from './adapters/browserbaseAdapter.js';
-
 /**
- * Select the appropriate provider adapter based on AppSettings.provider
+ * Provider adapter factory - routes to appropriate implementation
+ * Note: Current dispatcher in testCredential.js handles routing directly
+ * This is kept as a utility for future refactoring
  * 
  * @param {string} provider - 'scrapingbee' | 'browserless' | 'browserbase'
- * @returns {ProviderAdapter} Adapter instance
- * @throws {Error} If provider is unknown or not yet implemented
+ * @returns {Object} Provider metadata
+ * @throws {Error} If provider is unknown
  */
 export function selectAdapter(provider) {
   switch (provider) {
     case 'scrapingbee':
-      return new ScrapingBeeAdapter();
+      return { type: 'scrapingbee', name: 'ScrapingBee', status: 'active' };
     case 'browserless':
-      return new BrowserlessAdapter();
+      return { type: 'browserless', name: 'Browserless', status: 'in-development' };
     case 'browserbase':
-      return new BrowserbaseAdapter();
+      return { type: 'browserbase', name: 'Browserbase', status: 'in-development' };
     default:
       throw new Error(`Unknown provider: ${provider}`);
   }
