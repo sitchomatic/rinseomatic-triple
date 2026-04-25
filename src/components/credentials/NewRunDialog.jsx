@@ -9,6 +9,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@
 import { toast } from "sonner";
 import { format } from "date-fns";
 import RunAdvancedSettings from "@/components/credentials/RunAdvancedSettings";
+import TargetSiteOverrides from "@/components/credentials/TargetSiteOverrides";
 
 // Launches a TestRun against the selected target site for the chosen credentials.
 // Creates the TestRun record, then bulkCreates one queued TestResult per credential.
@@ -24,6 +25,7 @@ export default function NewRunDialog({ open, onOpenChange, credentialIds, onLaun
   const [proxyMode, setProxyMode] = React.useState("default");
   const [countryCode, setCountryCode] = React.useState("");
   const [externalProxyId, setExternalProxyId] = React.useState("");
+  const [targetSiteKeys, setTargetSiteKeys] = React.useState([]);
 
   const { data: sites = [] } = useQuery({
     queryKey: ["sites"],
@@ -44,6 +46,7 @@ export default function NewRunDialog({ open, onOpenChange, credentialIds, onLaun
       setProxyMode("default");
       setCountryCode("");
       setExternalProxyId("");
+      setTargetSiteKeys([]);
     }
   }, [open]);
 
@@ -73,6 +76,7 @@ export default function NewRunDialog({ open, onOpenChange, credentialIds, onLaun
         label,
         site_key: siteKey,
         custom_url: customUrl.trim() || undefined,
+        target_site_keys: targetSiteKeys.length > 0 ? targetSiteKeys : undefined,
         status: "queued",
         concurrency: Math.max(1, Math.min(5, Number(concurrency) || 2)),
         max_retries: Math.max(0, Math.min(5, Number(maxRetries) || 1)),
@@ -161,6 +165,13 @@ export default function NewRunDialog({ open, onOpenChange, credentialIds, onLaun
               </Select>
             </Field>
           </div>
+
+          <TargetSiteOverrides
+            sites={sites}
+            selectedKeys={targetSiteKeys}
+            setSelectedKeys={setTargetSiteKeys}
+            primarySiteKey={siteKey}
+          />
 
           <RunAdvancedSettings
             proxyMode={proxyMode}

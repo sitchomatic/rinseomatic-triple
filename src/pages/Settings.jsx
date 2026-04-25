@@ -16,6 +16,7 @@ import DiagnosticsPanel from "@/components/settings/DiagnosticsPanel";
 import CredentialsStatusPanel from "@/components/settings/CredentialsStatusPanel";
 import SiteSandbox from "@/components/settings/SiteSandbox";
 import SelectorDiscovery from "@/components/settings/SelectorDiscovery";
+import SiteAdvancedSettings from "@/components/settings/SiteAdvancedSettings";
 import { Plus, Trash2, Sparkles, Pencil, FlaskConical, Crosshair } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -31,6 +32,8 @@ const BLANK = {
   wait_after_submit_ms: 3500,
   enabled: true,
   lenient_success: false,
+  skip_primary: false,
+  secondary_site_keys: [],
 };
 
 export default function Settings() {
@@ -174,6 +177,7 @@ export default function Settings() {
                 <div>pass: <span className="text-foreground/80 truncate inline-block max-w-full align-bottom">{s.password_selector}</span></div>
                 <div>submit: <span className="text-foreground/80 truncate inline-block max-w-full align-bottom">{s.submit_selector}</span></div>
                 <div>success: <span className="text-foreground/80 truncate inline-block max-w-full align-bottom">{s.success_selector}</span></div>
+                <div>targets: <span className="text-foreground/80">{s.skip_primary ? "secondary only" : "primary"}{s.secondary_site_keys?.length ? ` + ${s.secondary_site_keys.length}` : ""}</span></div>
               </div>
             </div>
           ))}
@@ -251,6 +255,8 @@ export default function Settings() {
             </div>
             <Switch checked={!!draft.lenient_success} onCheckedChange={(v) => setDraft({ ...draft, lenient_success: v })} />
           </label>
+
+          <SiteAdvancedSettings draft={draft} setDraft={setDraft} sites={sites} />
 
           <div className="flex items-center justify-between pt-2 border-t border-border/60">
             <label className="flex items-center gap-2 cursor-pointer" title="When off, this site is hidden from run pickers and new credentials can't target it.">
