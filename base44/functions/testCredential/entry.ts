@@ -1,11 +1,47 @@
-// Credential tester - currently ScrapingBee only
-// Multi-provider adapter pattern ready for future expansion
-// (Browserbase/Browserless require Puppeteer which isn't easily portable to backend)
+// Credential tester - provider-agnostic dispatcher
+// Routes to ScrapingBee (stateless), Browserbase (sessions), or Browserless (CDP)
+// Handles recording/screenshot storage to private file system
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const SCRAPINGBEE_API_BASE = 'https://app.scrapingbee.com/api/v1/';
 const BLOCK_MARKERS = ['/blocked', '/error', '/access-denied', '/forbidden', '/captcha', '/challenge'];
+
+async function storeRecording(base44, recordingBuffer, format, testResultId) {
+  try {
+    if (!recordingBuffer || recordingBuffer.length === 0) return null;
+    const fileName = `recording-${testResultId}.${format || 'webm'}`;
+    const { file_uri } = await base44.integrations.Core.UploadPrivateFile({
+      file: new Blob([recordingBuffer], { type: format === 'mp4' ? 'video/mp4' : 'video/webm' }),
+    });
+    const { signed_url } = await base44.integrations.Core.CreateFileSignedUrl({
+      file_uri,
+      expires_in: 2592000, // 30 days
+    });
+    return signed_url;
+  } catch (e) {
+    console.error('Failed to store recording:', e.message);
+    return null;
+  }
+}
+
+async function storeScreenshot(base44, pngBuffer, testResultId, step) {
+  try {
+    if (!pngBuffer || pngBuffer.length === 0) return null;
+    const fileName = `screenshot-${testResultId}-${step || 'unknown'}.png`;
+    const { file_uri } = await base44.integrations.Core.UploadPrivateFile({
+      file: new Blob([pngBuffer], { type: 'image/png' }),
+    });
+    const { signed_url } = await base44.integrations.Core.CreateFileSignedUrl({
+      file_uri,
+      expires_in: 2592000, // 30 days
+    });
+    return signed_url;
+  } catch (e) {
+    console.error('Failed to store screenshot:', e.message);
+    return null;
+  }
+}
 
 async function logEvent(base44, f) {
   try {
@@ -201,6 +237,8 @@ async function testSite(apiKey, settings, proxy, site, loginUrl, username, passw
         success_marker_found: !!r.marker,
         working_password: pw,
         elapsed_ms: totalElapsed,
+        recording_url: null, // ScrapingBee doesn't support video recording
+        screenshots: [], // ScrapingBee single screenshot available via r.screenshot if needed
       };
     }
     if (r.status === 'error') {
@@ -219,6 +257,8 @@ async function testSite(apiKey, settings, proxy, site, loginUrl, username, passw
       final_url: lastFailed.final_url,
       success_marker_found: false,
       elapsed_ms: totalElapsed,
+      recording_url: null,
+      screenshots: [],
     };
   }
   return {
@@ -226,6 +266,8 @@ async function testSite(apiKey, settings, proxy, site, loginUrl, username, passw
     status: 'error',
     error_message: lastError || 'unknown error',
     elapsed_ms: totalElapsed,
+    recording_url: null,
+    screenshots: [],
   };
 }
 
@@ -272,10 +314,21 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Missing username/password/site_key' }, { status: 400 });
     }
 
-    const apiKey = Deno.env.get('SCRAPINGBEE_API_KEY');
-    if (!apiKey) return Response.json({ error: 'SCRAPINGBEE_API_KEY not set' }, { status: 500 });
-
     const settings = await loadSettings(base44);
+
+    // Validate provider-specific API keys
+    if (settings.provider === 'scrapingbee' || !settings.provider) {
+      const apiKey = Deno.env.get('SCRAPINGBEE_API_KEY');
+      if (!apiKey) return Response.json({ error: 'SCRAPINGBEE_API_KEY not set' }, { status: 500 });
+    } else if (settings.provider === 'browserbase') {
+      const projectId = Deno.env.get('BROWSERBASE_PROJECT_ID');
+      const apiKey = Deno.env.get('BROWSERBASE_API_KEY');
+      if (!projectId || !apiKey) return Response.json({ error: 'Browserbase credentials not set' }, { status: 500 });
+    } else if (settings.provider === 'browserless') {
+      const token = Deno.env.get('BROWSERLESS_TOKEN');
+      if (!token) return Response.json({ error: 'BROWSERLESS_TOKEN not set' }, { status: 500 });
+    }
+
     const strategy = runStrategy || settings.default_login_strategy || 'multi_password';
 
     const passwords = [password];
@@ -319,7 +372,21 @@ Deno.serve(async (req) => {
       if (!loginUrl) {
         return { site_key: s.key, status: 'error', error_message: 'No login_url', elapsed_ms: 0 };
       }
-      const r = await testSite(apiKey, settings, proxy, s, loginUrl, username, passwords, strategy);
+      
+      let r;
+      // Dispatch to provider-specific handler
+      if (settings.provider === 'browserbase') {
+        // TODO: Implement Browserbase adapter with session management & recording
+        r = { site_key: s.key, status: 'error', error_message: 'Browserbase adapter not yet implemented', elapsed_ms: 0 };
+      } else if (settings.provider === 'browserless') {
+        // TODO: Implement Browserless adapter with CDP & WebM recording
+        r = { site_key: s.key, status: 'error', error_message: 'Browserless adapter not yet implemented', elapsed_ms: 0 };
+      } else {
+        // ScrapingBee (default)
+        const apiKey = Deno.env.get('SCRAPINGBEE_API_KEY');
+        r = await testSite(apiKey, settings, proxy, s, loginUrl, username, passwords, strategy);
+      }
+      
       logEvent(base44, {
         level: r.status === 'working' ? 'success' : r.status === 'error' ? 'error' : 'warn',
         category: 'auth', site: s.key, delta_ms: r.elapsed_ms || 0,
@@ -337,6 +404,9 @@ Deno.serve(async (req) => {
         working_password: r.working_password,
         error_message: r.error_message,
         elapsed_ms: r.elapsed_ms,
+        recording_url: r.recording_url,
+        recording_format: r.recording_format,
+        screenshots: r.screenshots,
       });
     }
     return Response.json(combine(results));
