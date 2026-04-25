@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import PageHeader from "@/components/shared/PageHeader";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import ProviderSelectorPanel from "@/components/settings/ProviderSelectorPanel";
+import MaintenancePanel from "@/components/settings/MaintenancePanel";
 import BrowserbaseSettingsPanel from "@/components/settings/BrowserbaseSettingsPanel";
 import BrowserlessSettingsPanel from "@/components/settings/BrowserlessSettingsPanel";
 import ProxySettingsPanel from "@/components/settings/ProxySettingsPanel.jsx";
@@ -111,6 +112,7 @@ export default function Settings() {
 
       <div className="space-y-6 mb-8">
         <ProviderSelectorPanel settings={appSettings[0]} />
+        <MaintenancePanel settings={appSettings[0]} />
         <CredentialsStatusPanel />
         {appSettings[0]?.provider === "browserbase" && <BrowserbaseSettingsPanel settings={appSettings[0]} />}
         {appSettings[0]?.provider === "browserless" && <BrowserlessSettingsPanel settings={appSettings[0]} />}

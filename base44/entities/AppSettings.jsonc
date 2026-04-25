@@ -127,6 +127,31 @@
       "type": "number",
       "default": 30,
       "description": "Days to retain video recordings"
+    },
+    "worker_max_parallel_runs": {
+      "type": "number",
+      "default": 10,
+      "description": "Maximum active runs the scheduled worker advances per tick"
+    },
+    "auto_heal_idle_minutes": {
+      "type": "number",
+      "default": 4,
+      "description": "Minutes before a running result is treated as stuck"
+    },
+    "auto_heal_reclaim_budget": {
+      "type": "number",
+      "default": 200,
+      "description": "Maximum stuck rows to reclaim per run per auto-heal cycle"
+    },
+    "auto_heal_error_rate": {
+      "type": "number",
+      "default": 0.5,
+      "description": "Error-rate threshold for proxy rotation"
+    },
+    "auto_heal_min_samples": {
+      "type": "number",
+      "default": 10,
+      "description": "Minimum completed rows before auto-heal considers proxy rotation"
     }
   },
   "rls": {

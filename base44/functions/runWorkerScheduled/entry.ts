@@ -26,6 +26,9 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Admin only' }, { status: 403 });
     }
 
+    const settingsRows = await base44.asServiceRole.entities.AppSettings.list('-created_date', 1);
+    const maxParallelRuns = Math.max(1, Math.min(50, Number(settingsRows[0]?.worker_max_parallel_runs) || MAX_PARALLEL_RUNS));
+
     const queued = await base44.asServiceRole.entities.TestRun.filter({ status: 'queued' }, '-created_date', 50);
     const running = await base44.asServiceRole.entities.TestRun.filter({ status: 'running' }, '-created_date', 50);
     const active = [...queued, ...running];
@@ -39,7 +42,7 @@ Deno.serve(async (req) => {
     // the next, blocking fast runs behind slow ones. With the ceiling, we
     // simply truncate to the top N most-recent active runs; the rest get
     // picked up on the next 5-minute tick.
-    const slice = active.slice(0, MAX_PARALLEL_RUNS);
+    const slice = active.slice(0, maxParallelRuns);
     const results = await Promise.allSettled(slice.map((run) =>
       base44.asServiceRole.functions.invoke('runWorker', { run_id: run.id })
     ));

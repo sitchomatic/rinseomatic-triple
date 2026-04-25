@@ -33,17 +33,21 @@ async function log(base44, message, level = 'info') {
   } catch (_) { /* logging is best-effort */ }
 }
 
-async function healOneRun(base44, run) {
+async function healOneRun(base44, run, config) {
   const summary = { run_id: run.id, requeued_stuck: 0, rotated_proxy: false, notes: [] };
   const now = Date.now();
+  const idleMaxMs = Math.max(1, Number(config.auto_heal_idle_minutes) || 4) * 60 * 1000;
+  const reclaimBudget = Math.max(1, Math.min(1000, Number(config.auto_heal_reclaim_budget) || STUCK_RECLAIM_BUDGET));
+  const highErrorRate = Math.max(0.05, Math.min(1, Number(config.auto_heal_error_rate) || HIGH_ERROR_RATE));
+  const minSamples = Math.max(1, Number(config.auto_heal_min_samples) || MIN_SAMPLES_FOR_ROTATION);
 
   // ---- 1. Stuck rows ----
   const running = await base44.asServiceRole.entities.TestResult.filter(
-    { run_id: run.id, status: 'running' }, '-tested_at', STUCK_RECLAIM_BUDGET
+    { run_id: run.id, status: 'running' }, '-tested_at', reclaimBudget
   );
   const stuck = running.filter((r) => {
     const t = r.started_at ? new Date(r.started_at).getTime() : (r.tested_at ? new Date(r.tested_at).getTime() : 0);
-    return t > 0 && now - t > IDLE_MAX_MS;
+    return t > 0 && now - t > idleMaxMs;
   });
 
   if (stuck.length > 0) {
@@ -65,12 +69,12 @@ async function healOneRun(base44, run) {
     { run_id: run.id, status: 'error' }, '-tested_at', 50
   );
   const totalCompleted = (run.working_count || 0) + (run.failed_count || 0) + (run.error_count || 0);
-  if (totalCompleted >= MIN_SAMPLES_FOR_ROTATION && errored.length >= MIN_SAMPLES_FOR_ROTATION) {
+  if (totalCompleted >= minSamples && errored.length >= minSamples) {
     const errorRate = (run.error_count || 0) / totalCompleted;
     const blockedCount = errored.filter((r) => isBlockedMsg(r.error_message)).length;
     const blockedRatio = blockedCount / errored.length;
 
-    if (errorRate > HIGH_ERROR_RATE && blockedRatio > 0.5) {
+    if (errorRate > highErrorRate && blockedRatio > 0.5) {
       // Rotate: flip sticky off + cycle preset. Conservative — we don't change
       // country, just force fresh IPs on the next claimed batches.
       const update = {};
@@ -104,6 +108,9 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    const settingsRows = await base44.asServiceRole.entities.AppSettings.list('-created_date', 1);
+    const settings = settingsRows[0] || {};
+
     const active = await base44.asServiceRole.entities.TestRun.filter(
       { status: { $in: ['running', 'queued'] } }, '-created_date', 50
     );
@@ -115,7 +122,7 @@ Deno.serve(async (req) => {
     const summaries = [];
     for (const run of active) {
       try {
-        const s = await healOneRun(base44, run);
+        const s = await healOneRun(base44, run, settings);
         if (s.requeued_stuck > 0 || s.rotated_proxy) summaries.push(s);
       } catch (e) {
         await log(base44, `Auto-heal failed for run ${run.id}: ${e.message}`, 'error');
