@@ -1,8 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { LayoutDashboard, KeyRound, Play, Settings as SettingsIcon, Shield, Radio, Clock, TrendingUp } from "lucide-react";
+import { LayoutDashboard, KeyRound, Play, Settings as SettingsIcon, Shield, Radio, Clock, TrendingUp, Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ThemeToggle from "@/components/ThemeToggle";
+import TerminalPanel from "@/components/Terminal/TerminalPanel";
+import { Button } from "@/components/ui/button";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -26,6 +28,7 @@ const TITLES = {
 
 export default function Layout() {
   const { pathname } = useLocation();
+  const [terminalOpen, setTerminalOpen] = useState(false);
 
   React.useEffect(() => {
     const base = TITLES[pathname] || (pathname.startsWith("/runs/") ? "Run detail · Credential Tester" : "Credential Tester");
@@ -47,21 +50,32 @@ export default function Layout() {
           <ThemeToggle />
         </div>
         <nav className="flex-1 p-2 space-y-1">
-          {NAV.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) => cn(
-                "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors",
-                isActive ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </NavLink>
-          ))}
-        </nav>
+           {NAV.map(({ to, label, icon: Icon, end }) => (
+             <NavLink
+               key={to}
+               to={to}
+               end={end}
+               className={({ isActive }) => cn(
+                 "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors",
+                 isActive ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+               )}
+             >
+               <Icon className="h-4 w-4" />
+               {label}
+             </NavLink>
+           ))}
+         </nav>
+         <div className="border-t border-border p-2">
+           <Button
+             variant={terminalOpen ? "default" : "outline"}
+             size="sm"
+             className="w-full justify-start gap-2"
+             onClick={() => setTerminalOpen(!terminalOpen)}
+           >
+             <Terminal className="h-4 w-4" />
+             Terminal
+           </Button>
+         </div>
       </aside>
 
       {/* Mobile top bar */}
@@ -92,8 +106,10 @@ export default function Layout() {
       </header>
 
       <main className="flex-1 min-w-0">
-        <Outlet />
-      </main>
-    </div>
-  );
-}
+         <Outlet />
+       </main>
+
+      <TerminalPanel isOpen={terminalOpen} onClose={() => setTerminalOpen(false)} />
+      </div>
+      );
+      }
