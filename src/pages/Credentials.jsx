@@ -30,14 +30,18 @@ export default function Credentials() {
     staleTime: 60_000,
   });
 
+  // Filter out disabled credentials from display (but keep in DB)
+  const visibleCredentials = credentials.filter((c) => !c.disabled);
+
   const filtered = React.useMemo(() => {
-    if (!search.trim()) return credentials;
+    const searchList = search.trim() ? credentials : visibleCredentials;
+    if (!search.trim()) return searchList;
     const q = search.trim().toLowerCase();
-    return credentials.filter((c) =>
+    return searchList.filter((c) =>
       (c.username || "").toLowerCase().includes(q) ||
       (c.notes || "").toLowerCase().includes(q)
     );
-  }, [credentials, search]);
+  }, [credentials, visibleCredentials, search]);
 
   const allVisibleSelected = filtered.length > 0 && filtered.every((c) => selected.has(c.id));
   const toggleAll = () => {
@@ -155,7 +159,7 @@ export default function Credentials() {
         <div className="rounded-xl border border-border bg-card/40 py-16 flex items-center justify-center">
           <div className="w-6 h-6 border-2 border-border border-t-primary rounded-full animate-spin" />
         </div>
-      ) : credentials.length === 0 ? (
+      ) : visibleCredentials.length === 0 ? (
         <EmptyState
           icon={Key}
           title="No credentials yet"
