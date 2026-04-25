@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import PageHeader from "@/components/shared/PageHeader";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
+import ProviderSelectorPanel from "@/components/settings/ProviderSelectorPanel";
 import ProxySettingsPanel from "@/components/settings/ProxySettingsPanel.jsx";
 import ExternalProxiesManager from "@/components/settings/ExternalProxiesManager";
 import DiagnosticsPanel from "@/components/settings/DiagnosticsPanel";
@@ -38,6 +39,11 @@ export default function Settings() {
   const { data: proxies = [] } = useQuery({
     queryKey: ["proxies"],
     queryFn: () => base44.entities.Proxy.list("-created_date", 100),
+    staleTime: 60_000,
+  });
+  const { data: appSettings = [] } = useQuery({
+    queryKey: ["app-settings"],
+    queryFn: () => base44.entities.AppSettings.list("-created_date", 1),
     staleTime: 60_000,
   });
 
@@ -89,6 +95,7 @@ export default function Settings() {
       />
 
       <div className="space-y-6 mb-8">
+        <ProviderSelectorPanel settings={appSettings[0]} />
         <ProxySettingsPanel proxies={proxies} />
         <DiagnosticsPanel />
         <ExternalProxiesManager proxies={proxies} />
