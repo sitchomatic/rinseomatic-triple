@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import RunAdvancedSettings from "@/components/credentials/RunAdvancedSettings";
 
 // Launches a TestRun against the selected target site for the chosen credentials.
 // Creates the TestRun record, then bulkCreates one queued TestResult per credential.
@@ -20,6 +21,9 @@ export default function NewRunDialog({ open, onOpenChange, credentialIds, onLaun
   const [maxRetries, setMaxRetries] = React.useState(1);
   const [strategy, setStrategy] = React.useState("multi_password");
   const [customUrl, setCustomUrl] = React.useState("");
+  const [proxyMode, setProxyMode] = React.useState("default");
+  const [countryCode, setCountryCode] = React.useState("");
+  const [externalProxyId, setExternalProxyId] = React.useState("");
 
   const { data: sites = [] } = useQuery({
     queryKey: ["sites"],
@@ -27,10 +31,19 @@ export default function NewRunDialog({ open, onOpenChange, credentialIds, onLaun
     staleTime: 5 * 60_000,
   });
 
+  const { data: proxies = [] } = useQuery({
+    queryKey: ["proxies"],
+    queryFn: () => base44.entities.Proxy.list("-created_date", 100),
+    staleTime: 60_000,
+  });
+
   React.useEffect(() => {
     if (open) {
       setLabel(`Run · ${format(new Date(), "MMM d HH:mm")}`);
       setCustomUrl("");
+      setProxyMode("default");
+      setCountryCode("");
+      setExternalProxyId("");
     }
   }, [open]);
 
@@ -64,6 +77,9 @@ export default function NewRunDialog({ open, onOpenChange, credentialIds, onLaun
         concurrency: Math.max(1, Math.min(5, Number(concurrency) || 2)),
         max_retries: Math.max(0, Math.min(5, Number(maxRetries) || 1)),
         login_strategy: strategy,
+        proxy_mode: proxyMode === "default" ? undefined : proxyMode,
+        country_code: countryCode.trim() || undefined,
+        external_proxy_id: proxyMode === "external" ? externalProxyId || undefined : undefined,
         total_count: creds.length,
         pending_count: creds.length,
         working_count: 0,
@@ -145,6 +161,16 @@ export default function NewRunDialog({ open, onOpenChange, credentialIds, onLaun
               </Select>
             </Field>
           </div>
+
+          <RunAdvancedSettings
+            proxyMode={proxyMode}
+            setProxyMode={setProxyMode}
+            countryCode={countryCode}
+            setCountryCode={setCountryCode}
+            externalProxyId={externalProxyId}
+            setExternalProxyId={setExternalProxyId}
+            proxies={proxies}
+          />
         </div>
 
         <DialogFooter>
