@@ -10,10 +10,63 @@
     "provider": {
       "type": "string",
       "enum": [
+        "browserbase",
+        "browserless",
         "scrapingbee"
       ],
       "default": "scrapingbee",
-      "description": "Automation provider. ScrapingBee is the only supported provider."
+      "description": "Browser automation provider"
+    },
+    "timeout_ms": {
+      "type": "number",
+      "default": 60000,
+      "description": "Max session duration (ms)"
+    },
+    "viewport_width": {
+      "type": "number",
+      "default": 1920,
+      "description": "Browser viewport width"
+    },
+    "viewport_height": {
+      "type": "number",
+      "default": 1080,
+      "description": "Browser viewport height"
+    },
+    "browserbase_region": {
+      "type": "string",
+      "enum": [
+        "us-west-2",
+        "us-east-1",
+        "eu-central-1",
+        "ap-southeast-1"
+      ],
+      "default": "us-west-2",
+      "description": "Browserbase session region"
+    },
+    "browserbase_keep_alive": {
+      "type": "boolean",
+      "default": false,
+      "description": "Keep Browserbase session alive after disconnection"
+    },
+    "browserless_endpoint": {
+      "type": "string",
+      "default": "production-sfo",
+      "description": "Browserless endpoint (production-sfo, etc.)"
+    },
+    "browserless_stealth_proxy": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable stealth proxy mode for Browserless"
+    },
+    "capture_video": {
+      "type": "boolean",
+      "default": true,
+      "description": "Capture video recording of sessions"
+    },
+    "capture_screenshots": {
+      "type": "boolean",
+      "default": false,
+      "description": "Capture screenshots during session"
     },
     "proxy_mode": {
       "type": "string",
@@ -25,50 +78,35 @@
         "none"
       ],
       "default": "premium",
-      "description": "ScrapingBee proxy tier. 'classic' = default datacenter pool (5 credits). 'premium' = residential/premium pool, premium_proxy=true (25 credits). 'stealth' = stealth_proxy=true (75 credits, hardest sites). 'external' = own_proxy. 'none' = render_js=false direct."
+      "description": "ScrapingBee proxy tier"
     },
     "country_code": {
       "type": "string",
       "default": "au",
-      "description": "ISO 3166-1 alpha-2 country code passed as country_code (e.g. 'au', 'us', 'gb'). Requires premium or stealth proxy on ScrapingBee."
+      "description": "ISO 3166-1 alpha-2 country code (requires premium/stealth on ScrapingBee)"
     },
     "external_proxy_id": {
       "type": "string",
-      "description": "ID of Proxy entity to use when proxy_mode='external'. Sent to ScrapingBee as own_proxy=<scheme>://user:pass@host:port."
+      "description": "ID of Proxy entity for external proxy mode"
     },
     "block_ads": {
       "type": "boolean",
       "default": true,
-      "description": "ScrapingBee block_ads parameter."
+      "description": "Block ads (ScrapingBee)"
     },
     "block_resources": {
       "type": "boolean",
       "default": true,
-      "description": "ScrapingBee block_resources parameter \u2014 blocks images/CSS for faster loads. Default ON in ScrapingBee."
-    },
-    "timeout_ms": {
-      "type": "number",
-      "default": 60000,
-      "description": "Max ScrapingBee request duration (ms). ScrapingBee 'timeout' param. Capped at 140000 by ScrapingBee."
+      "description": "Block images/CSS (ScrapingBee)"
     },
     "wait_after_load_ms": {
       "type": "number",
       "default": 0,
-      "description": "ScrapingBee 'wait' parameter \u2014 extra time after page load before instructions start."
+      "description": "Wait after page load (ms)"
     },
     "user_agent": {
       "type": "string",
-      "description": "Optional. Forwarded via forward_headers when set."
-    },
-    "viewport_width": {
-      "type": "number",
-      "default": 1920,
-      "description": "ScrapingBee window_width."
-    },
-    "viewport_height": {
-      "type": "number",
-      "default": 1080,
-      "description": "ScrapingBee window_height."
+      "description": "Optional custom user agent"
     },
     "default_login_strategy": {
       "type": "string",
@@ -78,12 +116,12 @@
         "all_passwords"
       ],
       "default": "multi_password",
-      "description": "Default strategy: try one password, or try multiple until one works, or test every password."
+      "description": "Default password testing strategy"
     },
-    "capture_screenshots": {
-      "type": "boolean",
-      "default": false,
-      "description": "Capture a screenshot after each login attempt (ScrapingBee screenshot=true, costs +1 credit)."
+    "recording_retention_days": {
+      "type": "number",
+      "default": 30,
+      "description": "Days to retain video recordings"
     }
   },
   "rls": {
