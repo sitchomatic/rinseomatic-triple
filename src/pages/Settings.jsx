@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import BrowserlessSettingsPanel from "@/components/settings/BrowserlessSettingsP
 import ProxySettingsPanel from "@/components/settings/ProxySettingsPanel.jsx";
 import ExternalProxiesManager from "@/components/settings/ExternalProxiesManager";
 import DiagnosticsPanel from "@/components/settings/DiagnosticsPanel";
+import CredentialsStatusPanel from "@/components/settings/CredentialsStatusPanel";
 import SiteSandbox from "@/components/settings/SiteSandbox";
 import { Plus, Trash2, Sparkles, Pencil, FlaskConical } from "lucide-react";
 import { toast } from "sonner";
@@ -49,9 +50,9 @@ export default function Settings() {
     staleTime: 60_000,
   });
 
-  const [draft, setDraft] = React.useState(BLANK);
-  const [confirmDelete, setConfirmDelete] = React.useState(null);
-  const [sandboxSite, setSandboxSite] = React.useState(null);
+  const [draft, setDraft] = useState(BLANK);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [sandboxSite, setSandboxSite] = useState(null);
 
   const saveMut = useMutation({
     mutationFn: async (d) => {
@@ -98,6 +99,7 @@ export default function Settings() {
 
       <div className="space-y-6 mb-8">
         <ProviderSelectorPanel settings={appSettings[0]} />
+        <CredentialsStatusPanel />
         {appSettings[0]?.provider === "browserbase" && <BrowserbaseSettingsPanel settings={appSettings[0]} />}
         {appSettings[0]?.provider === "browserless" && <BrowserlessSettingsPanel settings={appSettings[0]} />}
         {appSettings[0]?.provider === "scrapingbee" && (

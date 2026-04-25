@@ -1,12 +1,12 @@
-import React from "react";
+import React, { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Play, X, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function RecordingViewer({ testResult, open, onOpenChange }) {
-  const [activeTab, setActiveTab] = React.useState("recording");
-  const [currentScreenshot, setCurrentScreenshot] = React.useState(0);
+  const [activeTab, setActiveTab] = useState("recording");
+  const [currentScreenshot, setCurrentScreenshot] = useState(0);
 
   const hasRecording = !!testResult?.recording_url;
   const hasScreenshots = Array.isArray(testResult?.screenshots) && testResult.screenshots.length > 0;

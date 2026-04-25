@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useMemo } from "react";
 import StatusPill from "@/components/shared/StatusPill";
 import { formatMs } from "@/lib/sites";
 import { Play } from "lucide-react";
@@ -29,12 +29,12 @@ const ERROR_TONE = {
 };
 
 export default function ResultsTable({ results }) {
-  const [viewRecording, setViewRecording] = React.useState(null);
+  const [viewRecording, setViewRecording] = useState(null);
 
   // L12 fix: pre-parse error tags ONCE per result list, not on every render.
   // Worst case (5k results, 10 streaming updates/sec) goes from 50k regex
   // executions per second to 5k once.
-  const decorated = React.useMemo(() => {
+  const decorated = useMemo(() => {
     if (!results) return [];
     return results.map((r) => {
       const { label, message } = splitErrorTag(r.error_message);
