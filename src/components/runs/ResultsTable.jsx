@@ -1,6 +1,9 @@
 import React from "react";
 import StatusPill from "@/components/shared/StatusPill";
 import { formatMs } from "@/lib/sites";
+import { Play } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import RecordingViewer from "@/components/runs/RecordingViewer";
 
 // Pull the "[Class] " tag out of error messages saved by the worker (D1).
 // Returns { label, message } where label may be null.
@@ -26,6 +29,8 @@ const ERROR_TONE = {
 };
 
 export default function ResultsTable({ results }) {
+  const [viewRecording, setViewRecording] = React.useState(null);
+
   // L12 fix: pre-parse error tags ONCE per result list, not on every render.
   // Worst case (5k results, 10 streaming updates/sec) goes from 50k regex
   // executions per second to 5k once.
@@ -46,18 +51,19 @@ export default function ResultsTable({ results }) {
   }
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
-      <div className="grid grid-cols-[minmax(0,2fr)_110px_100px_minmax(0,3fr)_80px] gap-3 px-4 py-2.5 border-b border-border bg-secondary/40 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+      <div className="grid grid-cols-[minmax(0,2fr)_110px_100px_minmax(0,3fr)_80px_40px] gap-3 px-4 py-2.5 border-b border-border bg-secondary/40 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
         <div>Username</div>
         <div>Status</div>
         <div>Attempts</div>
         <div>Detail</div>
         <div>Elapsed</div>
+        <div />
       </div>
       <div className="divide-y divide-border/60 max-h-[540px] overflow-y-auto thin-scroll">
         {decorated.map(({ row: r, label, message, tone }, i) => (
           <div
             key={r.id}
-            className="grid grid-cols-[minmax(0,2fr)_110px_100px_minmax(0,3fr)_80px] gap-3 px-4 py-2.5 items-center text-xs font-mono animate-row-in"
+            className="grid grid-cols-[minmax(0,2fr)_110px_100px_minmax(0,3fr)_80px_40px] gap-3 px-4 py-2.5 items-center text-xs font-mono animate-row-in"
             style={{ animationDelay: `${Math.min(i * 8, 200)}ms` }}
           >
             <div className="truncate">{r.username}</div>
@@ -74,9 +80,28 @@ export default function ResultsTable({ results }) {
               </span>
             </div>
             <div className="text-muted-foreground">{formatMs(r.elapsed_ms)}</div>
+            <div>
+              {(r.recording_url || (Array.isArray(r.screenshots) && r.screenshots.length > 0)) && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-primary"
+                  onClick={() => setViewRecording(r)}
+                  title="View recording/screenshots"
+                >
+                  <Play className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
           </div>
         ))}
       </div>
+
+      <RecordingViewer
+        testResult={viewRecording}
+        open={!!viewRecording}
+        onOpenChange={(v) => !v && setViewRecording(null)}
+      />
     </div>
   );
 }

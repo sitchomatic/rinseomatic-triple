@@ -54,6 +54,39 @@
       "type": "string",
       "format": "date-time",
       "description": "When the worker last picked up this row (used to detect stuck rows)."
+    },
+    "recording_url": {
+      "type": "string",
+      "description": "URL to video recording (private storage signed URL). Only set for Browserbase/Browserless."
+    },
+    "recording_format": {
+      "type": "string",
+      "enum": [
+        "webm",
+        "mp4"
+      ],
+      "description": "Format of the recording (webm for Browserless, mp4 for Browserbase)."
+    },
+    "screenshots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "step": {
+            "type": "string",
+            "description": "Step label (e.g., 'before_submit', 'after_submit')"
+          },
+          "url": {
+            "type": "string",
+            "description": "URL to screenshot (private storage signed URL)"
+          },
+          "captured_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "description": "Array of step-by-step screenshots captured during the test."
     }
   },
   "required": [
