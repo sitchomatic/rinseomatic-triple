@@ -9,6 +9,8 @@ import PageHeader from "@/components/shared/PageHeader";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import ProviderSelectorPanel from "@/components/settings/ProviderSelectorPanel";
 import MaintenancePanel from "@/components/settings/MaintenancePanel";
+import BrowserbaseSettingsPanel from "@/components/settings/BrowserbaseSettingsPanel";
+import BrowserlessSettingsPanel from "@/components/settings/BrowserlessSettingsPanel";
 import ProxySettingsPanel from "@/components/settings/ProxySettingsPanel.jsx";
 import ExternalProxiesManager from "@/components/settings/ExternalProxiesManager";
 import ProxyPoolsManager from "@/components/settings/ProxyPoolsManager";
@@ -112,11 +114,17 @@ export default function Settings() {
         <ProviderSelectorPanel settings={appSettings[0]} />
         <MaintenancePanel settings={appSettings[0]} />
         <CredentialsStatusPanel />
-        <ProxySettingsPanel settings={appSettings[0]} proxies={proxies} proxyPools={proxyPools} />
-        <DiagnosticsPanel />
-        <ExternalProxiesManager proxies={proxies} />
-        <ProxyPoolsManager proxies={proxies} />
-        <RepairSuggestionsPanel />
+        {appSettings[0]?.provider === "browserbase" && <BrowserbaseSettingsPanel settings={appSettings[0]} />}
+        {appSettings[0]?.provider === "browserless" && <BrowserlessSettingsPanel settings={appSettings[0]} />}
+        {appSettings[0]?.provider === "scrapingbee" && (
+          <>
+            <ProxySettingsPanel settings={appSettings[0]} proxies={proxies} proxyPools={proxyPools} />
+            <DiagnosticsPanel />
+            <ExternalProxiesManager proxies={proxies} />
+            <ProxyPoolsManager proxies={proxies} />
+            <RepairSuggestionsPanel />
+          </>
+        )}
       </div>
 
       <div className="grid lg:grid-cols-[1fr_420px] gap-6">

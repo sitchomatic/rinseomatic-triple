@@ -63,7 +63,7 @@ export default function BrowserbaseSettingsPanel({ settings }) {
         <div className="flex-1">
           <div className="text-sm font-medium">Browserbase settings</div>
           <div className="text-xs text-muted-foreground mt-0.5">
-            Stored for future Browserbase runner support; current login testing uses ScrapingBee.
+            Session region, recording options, and timeout configuration.
           </div>
         </div>
         {isDirty && (

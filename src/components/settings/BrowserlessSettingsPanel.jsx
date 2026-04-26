@@ -63,7 +63,7 @@ export default function BrowserlessSettingsPanel({ settings }) {
         <div className="flex-1">
           <div className="text-sm font-medium">Browserless settings</div>
           <div className="text-xs text-muted-foreground mt-0.5">
-            Used by proxy health checks; direct Browserless login testing is not enabled yet.
+            Endpoint, proxy mode, recording, and timeout configuration.
           </div>
         </div>
         {isDirty && (

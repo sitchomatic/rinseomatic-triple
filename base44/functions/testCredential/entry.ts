@@ -339,9 +339,18 @@ Deno.serve(async (req) => {
 
     const settings = await loadSettings(base44);
 
-    // ScrapingBee is the enabled login-runner adapter. Browserbase/Browserless settings are kept for provider health/proxy tooling only.
-    const apiKey = Deno.env.get('SCRAPINGBEE_API_KEY');
-    if (!apiKey) return Response.json({ error: 'SCRAPINGBEE_API_KEY not set' }, { status: 500 });
+    // Validate provider-specific API keys
+    if (settings.provider === 'scrapingbee' || !settings.provider) {
+      const apiKey = Deno.env.get('SCRAPINGBEE_API_KEY');
+      if (!apiKey) return Response.json({ error: 'SCRAPINGBEE_API_KEY not set' }, { status: 500 });
+    } else if (settings.provider === 'browserbase') {
+      const projectId = Deno.env.get('BROWSERBASE_PROJECT_ID');
+      const apiKey = Deno.env.get('BROWSERBASE_API_KEY');
+      if (!projectId || !apiKey) return Response.json({ error: 'Browserbase credentials not set' }, { status: 500 });
+    } else if (settings.provider === 'browserless') {
+      const token = Deno.env.get('BROWSERLESS_TOKEN');
+      if (!token) return Response.json({ error: 'BROWSERLESS_TOKEN not set' }, { status: 500 });
+    }
 
     const strategy = runStrategy || settings.default_login_strategy || 'multi_password';
 
@@ -387,7 +396,31 @@ Deno.serve(async (req) => {
         return { site_key: s.key, status: 'error', error_message: 'No login_url', elapsed_ms: 0 };
       }
       
-      const r = await testSite(apiKey, settings, proxy, s, loginUrl, username, passwords, strategy);
+      let r;
+      const started = Date.now();
+      // Dispatch to provider-specific handler
+      if (settings.provider === 'browserbase') {
+        const projectId = Deno.env.get('BROWSERBASE_PROJECT_ID');
+        const apiKey = Deno.env.get('BROWSERBASE_API_KEY');
+        r = {
+          site_key: s.key,
+          status: 'error',
+          error_message: 'Browserbase adapter is under active development. ScrapingBee is the stable default.',
+          elapsed_ms: Date.now() - started,
+        };
+      } else if (settings.provider === 'browserless') {
+        const token = Deno.env.get('BROWSERLESS_TOKEN');
+        r = {
+          site_key: s.key,
+          status: 'error',
+          error_message: 'Browserless adapter is under active development. ScrapingBee is the stable default.',
+          elapsed_ms: Date.now() - started,
+        };
+      } else {
+        // ScrapingBee (default)
+        const apiKey = Deno.env.get('SCRAPINGBEE_API_KEY');
+        r = await testSite(apiKey, settings, proxy, s, loginUrl, username, passwords, strategy);
+      }
       
       logEvent(base44, {
         level: r.status === 'working' ? 'success' : r.status === 'error' ? 'error' : 'warn',

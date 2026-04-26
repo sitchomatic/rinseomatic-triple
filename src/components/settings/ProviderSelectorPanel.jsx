@@ -16,14 +16,12 @@ const PROVIDERS = [
   {
     value: "browserbase",
     label: "Browserbase",
-    disabled: true,
-    description: "Credentials/settings are tracked, but the login runner adapter is not enabled yet.",
+    description: "Managed sessions, session recording, remote debugging. Region-based routing.",
   },
   {
     value: "browserless",
     label: "Browserless",
-    disabled: true,
-    description: "Used for proxy health checks; direct login-runner support is not enabled yet.",
+    description: "WebSocket-based CDP, stealth proxy, automatic WebM recording.",
   },
 ];
 
@@ -77,18 +75,13 @@ export default function ProviderSelectorPanel({ settings }) {
           </SelectTrigger>
           <SelectContent>
             {PROVIDERS.map((p) => (
-              <SelectItem key={p.value} value={p.value} disabled={p.disabled}>
-                {p.label}{p.disabled ? " · unavailable" : ""}
+              <SelectItem key={p.value} value={p.value}>
+                {p.label}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
         {info && <p className="text-[10px] text-muted-foreground leading-snug mt-1">{info.description}</p>}
-        {info?.disabled && (
-          <p className="text-[10px] text-amber-300 leading-snug mt-1">
-            This provider is intentionally disabled here because selecting it would make test runs fail.
-          </p>
-        )}
       </div>
     </div>
   );

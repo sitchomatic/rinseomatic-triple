@@ -65,7 +65,7 @@ export default function ProxyPoolsManager({ proxies = [] }) {
         <div className="flex-1">
           <div className="text-sm font-medium">Proxy pools</div>
           <div className="text-xs text-muted-foreground mt-0.5">
-            Group external proxies and define rotation rules used by global and per-run proxy pool mode.
+            Group external proxies and define rotation rules for future run routing.
           </div>
         </div>
         <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{pools.length} pools</span>
