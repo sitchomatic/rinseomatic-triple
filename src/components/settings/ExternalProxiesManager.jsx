@@ -75,7 +75,7 @@ export default function ExternalProxiesManager({ proxies = [] }) {
         <div className="flex-1">
           <div className="text-sm font-medium">External proxies</div>
           <div className="text-xs text-muted-foreground mt-0.5">
-            Your own HTTP / HTTPS / SOCKS5 proxies. Used only when <span className="font-mono text-foreground">Proxy mode = External</span> (set above or per run).
+            Your own HTTP / HTTPS / SOCKS5 proxies. Used when <span className="font-mono text-foreground">Proxy mode = External</span> or inside a proxy pool.
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">

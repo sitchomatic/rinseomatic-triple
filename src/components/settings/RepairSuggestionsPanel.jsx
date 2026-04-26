@@ -12,6 +12,7 @@ export default function RepairSuggestionsPanel() {
   const qc = useQueryClient();
   const [status, setStatus] = React.useState("pending");
   const [notes, setNotes] = React.useState({});
+  const [applyFields, setApplyFields] = React.useState({});
 
   const { data: suggestions = [] } = useQuery({
     queryKey: ["repair-suggestions", status],
@@ -47,8 +48,8 @@ export default function RepairSuggestionsPanel() {
       const sites = await base44.entities.Site.filter({ key: suggestion.site }, "-created_date", 1);
       const site = sites[0];
       if (!site) throw new Error(`Site not found: ${suggestion.site}`);
-      const failed = suggestion.failed_selector || "";
-      const field = failed.includes("password") ? "password_selector" : failed.includes("submit") || failed.includes("button") ? "submit_selector" : "username_selector";
+      const failed = (suggestion.failed_selector || "").toLowerCase();
+      const field = applyFields[suggestion.id] || (failed.includes("password") ? "password_selector" : failed.includes("submit") || failed.includes("button") ? "submit_selector" : "username_selector");
       await base44.entities.Site.update(site.id, { [field]: suggestion.suggested_selector });
       await base44.entities.RepairSuggestion.update(suggestion.id, {
         status: "approved",
@@ -112,9 +113,23 @@ export default function RepairSuggestionsPanel() {
               <div className="rounded bg-background/50 border border-border p-2 break-all"><span className="text-muted-foreground">suggested:</span> {s.suggested_selector || "—"}</div>
             </div>
             {s.failure_reason && <div className="text-xs text-muted-foreground">{s.failure_reason}</div>}
-            <div className="grid gap-1">
-              <Label className="text-xs">Reviewer notes</Label>
-              <Input value={notes[s.id] ?? s.reviewer_notes ?? ""} onChange={(e) => setNotes({ ...notes, [s.id]: e.target.value })} />
+            <div className="grid sm:grid-cols-[220px_1fr] gap-2">
+              <div className="grid gap-1">
+                <Label className="text-xs">Apply to field</Label>
+                <Select value={applyFields[s.id] || "username_selector"} onValueChange={(v) => setApplyFields({ ...applyFields, [s.id]: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="username_selector">Username selector</SelectItem>
+                    <SelectItem value="password_selector">Password selector</SelectItem>
+                    <SelectItem value="submit_selector">Submit selector</SelectItem>
+                    <SelectItem value="success_selector">Success selector</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1">
+                <Label className="text-xs">Reviewer notes</Label>
+                <Input value={notes[s.id] ?? s.reviewer_notes ?? ""} onChange={(e) => setNotes({ ...notes, [s.id]: e.target.value })} />
+              </div>
             </div>
             <div className="flex gap-2">
               <Button size="sm" variant="outline" className="gap-1.5" onClick={() => applyMut.mutate(s)} disabled={!s.site || !s.suggested_selector}>
