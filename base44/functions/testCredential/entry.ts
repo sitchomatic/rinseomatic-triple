@@ -303,7 +303,8 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
   let lastError = null;
 
   if (provider === 'browserless') {
-    const region = settings.browserless_endpoint || 'production-sfo';
+    let host = settings.browserless_endpoint || 'chrome.browserless.io';
+    if (!host.includes('.')) host = `${host}.browserless.io`;
     const scheme = proxy.external?.protocol || 'http';
     const auth = proxy.external?.username ? `${encodeURIComponent(proxy.external.username)}${proxy.external.password ? ':' + encodeURIComponent(proxy.external.password) : ''}@` : '';
     const proxyUrl = proxy.external ? `${scheme}://${auth}${proxy.external.host}:${proxy.external.port}` : null;
@@ -313,7 +314,7 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
     if (settings.browserless_stealth_proxy) params.set('stealth', 'true');
     if (settings.browserless_headful) params.set('headless', 'false');
     
-    const url = `https://${region}.browserless.io/function?${params.toString()}`;
+    const url = `https://${host}/function?${params.toString()}`;
 
     const code = `
       export default async ({ page }) => {

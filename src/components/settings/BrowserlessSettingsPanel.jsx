@@ -76,20 +76,13 @@ export default function BrowserlessSettingsPanel({ settings }) {
       </div>
 
       <div className="grid sm:grid-cols-2 gap-3">
-        <Field label="Endpoint" help="Browserless endpoint region (production-sfo, etc).">
-          <Select
-            value={draft.browserless_endpoint || "production-sfo"}
-            onValueChange={(v) => setDraft({ ...draft, browserless_endpoint: v })}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="production-sfo">production-sfo (default)</SelectItem>
-              <SelectItem value="production-eu">production-eu</SelectItem>
-              <SelectItem value="production-ap">production-ap</SelectItem>
-            </SelectContent>
-          </Select>
+        <Field label="Endpoint" help="Browserless endpoint host (e.g. chrome.browserless.io).">
+          <Input
+            value={draft.browserless_endpoint || "chrome.browserless.io"}
+            onChange={(e) => setDraft({ ...draft, browserless_endpoint: e.target.value })}
+            placeholder="chrome.browserless.io"
+            className="font-mono text-xs"
+          />
         </Field>
 
         <Field label="Timeout (ms)" help="Max session duration.">

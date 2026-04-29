@@ -5,7 +5,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 // Designed to be called either manually (from the Settings UI) or on a
 // daily schedule.
 
-async function pingOne(token, region, proxy) {
+async function pingOne(token, host, proxy) {
   // D3 fix: route the request through the actual proxy by passing
   // externalProxyServer as a Browserless query param (matches testCredential).
   // Previously this was passed in `context` and silently ignored, so the ping
@@ -18,7 +18,7 @@ async function pingOne(token, region, proxy) {
 
   const params = new URLSearchParams({ token });
   params.set('externalProxyServer', externalProxyServer);
-  const url = `https://${region}.browserless.io/function?${params.toString()}`;
+  const url = `https://${host}/function?${params.toString()}`;
 
   const code = `
     export default async ({ page }) => {
@@ -70,7 +70,8 @@ Deno.serve(async (req) => {
     if (!token) return Response.json({ error: 'BROWSERLESS_TOKEN not set' }, { status: 500 });
 
     const settings = (await base44.asServiceRole.entities.AppSettings.list('-created_date', 1))[0] || {};
-    const region = settings.browserless_endpoint || 'production-sfo';
+    let host = settings.browserless_endpoint || 'chrome.browserless.io';
+    if (!host.includes('.')) host = `${host}.browserless.io`;
 
     const proxies = await base44.asServiceRole.entities.Proxy.list('-created_date', 200);
     const targets = proxies.filter((p) => p.enabled !== false && p.host && p.port);
@@ -79,7 +80,7 @@ Deno.serve(async (req) => {
     // results for healthy proxies. Persist updates fire-and-forget in the
     // same wave (we already await the ping itself).
     const results = await Promise.allSettled(targets.map(async (p) => {
-      const r = await pingOne(token, region, p);
+      const r = await pingOne(token, host, p);
       const status = classify(r.ok, r.latency);
       await base44.asServiceRole.entities.Proxy.update(p.id, {
         status,
