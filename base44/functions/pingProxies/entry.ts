@@ -24,10 +24,14 @@ async function pingOne(token, host, proxy) {
     export default async ({ page }) => {
       const started = Date.now();
       try {
-        const res = await page.goto('https://api.ipify.org?format=json', { waitUntil: 'domcontentloaded', timeout: 15000 });
+        const res = await page.goto('https://ipinfo.io/json', { waitUntil: 'domcontentloaded', timeout: 15000 });
         const ok = res && res.ok();
+        let text = null;
+        if (ok) {
+          text = await page.evaluate(() => document.body.innerText);
+        }
         const elapsed = Date.now() - started;
-        return { data: { ok, elapsed }, type: 'application/json' };
+        return { data: { ok, elapsed, text }, type: 'application/json' };
       } catch (e) {
         return { data: { ok: false, error: e.message, elapsed: Date.now() - started }, type: 'application/json' };
       }
@@ -45,7 +49,17 @@ async function pingOne(token, host, proxy) {
     if (!res.ok) return { ok: false, latency: elapsed, error: `Browserless ${res.status}` };
     const json = await res.json();
     const data = json?.data || json;
-    return { ok: !!data.ok, latency: data.elapsed ?? elapsed, error: data.error };
+    
+    let ip = null, country = null;
+    if (data.text) {
+      try {
+        const info = JSON.parse(data.text);
+        ip = info.ip;
+        country = info.country;
+      } catch (_) {}
+    }
+    
+    return { ok: !!data.ok, latency: data.elapsed ?? elapsed, error: data.error, ip, country };
   } catch (e) {
     return { ok: false, latency: Date.now() - started, error: e.message };
   }
@@ -105,6 +119,8 @@ Deno.serve(async (req) => {
         failed_pings: failedPings,
         consecutive_failures: consecutiveFailures,
         enabled,
+        last_ip: r.ip || p.last_ip,
+        last_country: r.country || p.last_country,
       });
       return { id: p.id, label: p.label || `${p.host}:${p.port}`, status, latency_ms: r.latency, error: r.error, disabled_now: !enabled && p.enabled !== false };
     })).then((settled) => settled.map((s, i) => s.status === 'fulfilled'
