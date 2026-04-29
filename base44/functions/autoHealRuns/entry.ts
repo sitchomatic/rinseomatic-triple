@@ -76,15 +76,17 @@ async function healOneRun(base44, run, config) {
 
     if (errorRate > highErrorRate && blockedRatio > 0.5) {
       const currentMode = run.proxy_mode || config.proxy_mode || 'premium';
-      const nextMode = currentMode === 'stealth' ? 'premium' : 'stealth';
-      await base44.asServiceRole.entities.TestRun.update(run.id, { proxy_mode: nextMode });
-      summary.rotated_proxy = true;
-      summary.notes.push(`Rotated proxy mode: ${currentMode} → ${nextMode}`);
-      await log(
-        base44,
-        `Auto-heal: rotated proxy mode for run ${run.id} (${currentMode} → ${nextMode}, error rate ${(errorRate*100).toFixed(0)}%, blocked ratio ${(blockedRatio*100).toFixed(0)}%)`,
-        'warn'
-      );
+      if (currentMode === 'stealth' || currentMode === 'premium') {
+        const nextMode = currentMode === 'stealth' ? 'premium' : 'stealth';
+        await base44.asServiceRole.entities.TestRun.update(run.id, { proxy_mode: nextMode });
+        summary.rotated_proxy = true;
+        summary.notes.push(`Rotated proxy mode: ${currentMode} → ${nextMode}`);
+        await log(
+          base44,
+          `Auto-heal: rotated proxy mode for run ${run.id} (${currentMode} → ${nextMode}, error rate ${(errorRate*100).toFixed(0)}%, blocked ratio ${(blockedRatio*100).toFixed(0)}%)`,
+          'warn'
+        );
+      }
     }
   }
 

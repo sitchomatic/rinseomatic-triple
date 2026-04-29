@@ -27,7 +27,11 @@ export default function ExternalProxiesManager({ proxies = [] }) {
   const editing = !!draft.id;
 
   const saveMut = useMutation({
-    mutationFn: (d) => d.id ? base44.entities.Proxy.update(d.id, d) : base44.entities.Proxy.create(d),
+    mutationFn: (d) => {
+      const isReEnabling = d.id && d.enabled === true && proxies.find(p => p.id === d.id)?.enabled === false;
+      const payload = isReEnabling ? { ...d, total_pings: 0, failed_pings: 0, consecutive_failures: 0 } : d;
+      return payload.id ? base44.entities.Proxy.update(payload.id, payload) : base44.entities.Proxy.create(payload);
+    },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["proxies"] }); setDraft(BLANK); toast.success(editing ? "Proxy updated" : "Proxy added"); },
   });
   const delMut = useMutation({

@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
     }
 
     const proxies = await base44.asServiceRole.entities.Proxy.list('-created_date', 200);
-    const targets = proxies.filter((p) => p.enabled !== false && p.host && p.port);
+    const targets = proxies.filter((p) => p.enabled !== false && p.host && p.port && p.protocol !== 'wireguard');
 
     // L15 fix: use allSettled so a single timed-out ping no longer holds up
     // results for healthy proxies. Persist updates fire-and-forget in the
