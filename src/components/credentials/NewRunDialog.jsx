@@ -143,14 +143,20 @@ export default function NewRunDialog({ open, onOpenChange, credentialIds, onLaun
             <Input value={label} onChange={(e) => setLabel(e.target.value)} />
           </Field>
           <Field label="Target site" help="The selected credentials will be tested against this site's login URL & selectors.">
-            <Select value={siteKey} onValueChange={setSiteKey}>
-              <SelectTrigger><SelectValue placeholder="Pick a site…" /></SelectTrigger>
-              <SelectContent>
-                {enabledSites.map((s) => (
-                  <SelectItem key={s.id} value={s.key}>{s.label} · {s.key}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {enabledSites.length === 0 ? (
+              <div className="text-xs text-amber-500 bg-amber-500/10 border border-amber-500/20 rounded-md p-2">
+                No sites configured. Go to Settings to add or seed default sites first.
+              </div>
+            ) : (
+              <Select value={siteKey} onValueChange={setSiteKey}>
+                <SelectTrigger><SelectValue placeholder="Pick a site…" /></SelectTrigger>
+                <SelectContent>
+                  {enabledSites.map((s) => (
+                    <SelectItem key={s.id} value={s.key}>{s.label} · {s.key}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </Field>
           <Field label="Custom login URL (optional)" help="Overrides the site's login URL for this run only.">
             <Input value={customUrl} onChange={(e) => setCustomUrl(e.target.value)} placeholder="leave blank to use the site's URL" className="font-mono text-xs" />
