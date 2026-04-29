@@ -336,8 +336,8 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
         
         const started = Date.now();
         try {
-          await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-          await page.waitForSelector(submitSel, { visible: true }).catch(() => {});
+          await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+          await page.waitForSelector(userSel, { visible: true, timeout: 30000 }).catch(() => {});
 
           for (let i = 0; i < passwords.length; i++) {
             const pw = passwords[i];
@@ -363,6 +363,9 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
             const text = await page.evaluate(() => document.body.innerText);
             const lowerText = text.toLowerCase();
             
+            if (lowerText.includes('cloudflare') || lowerText.includes('just a moment') || lowerText.includes('access denied') || lowerText.includes('security check')) {
+               throw new Error('Cloudflare / IP Blocked');
+            }
             if (lowerText.includes('disabled') || lowerText.includes('has been disabled')) {
                return { data: { status: 'failed', final_url: page.url(), elapsed: Date.now() - started }, type: 'application/json' };
             }
@@ -412,9 +415,9 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
 
       try {
         const page = await browser.newPage();
-        await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+        await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
         try {
-          await page.waitForSelector(submitSel, { visible: true, timeout: 10000 });
+          await page.waitForSelector(userSel, { visible: true, timeout: 30000 });
         } catch (_) {
           // Ignore, we will try to type anyway if available
         }
@@ -441,6 +444,9 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
           await new Promise(r => setTimeout(r, 4000));
           
           const text = await page.evaluate(() => document.body.innerText.toLowerCase());
+          if (text.includes('cloudflare') || text.includes('just a moment') || text.includes('access denied') || text.includes('security check')) {
+            throw new Error('Cloudflare / IP Blocked');
+          }
           if (text.includes('disabled') || text.includes('has been disabled')) {
             return { site_key: site.key, status: 'failed', final_url: page.url(), elapsed_ms: Date.now() - started, screenshots: [], success_marker_found: false };
           }
@@ -470,6 +476,7 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
       const jsScenario = {
         strict: false,
         instructions: [
+          { wait: 3000 },
           { wait_for: userSel },
           { wait_for: passSel },
           { wait_for: submitSel },
@@ -494,6 +501,9 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
       try { json = await res.json(); } catch(e) { throw new Error("ScrapingBee non-JSON response"); }
 
       const body = (json.body || '').toLowerCase();
+      if (body.includes('cloudflare') || body.includes('just a moment') || body.includes('access denied') || body.includes('security check')) {
+        throw new Error('Cloudflare / IP Blocked');
+      }
       if (body.includes("disabled")) {
         return { site_key: site.key, status: 'failed', final_url: json.resolved_url, success_marker_found: false, elapsed_ms: totalElapsed, screenshots: [] };
       }
@@ -611,7 +621,7 @@ Deno.serve(async (req) => {
     });
 
     const results = await Promise.all(testSites.map(async (s, index) => {
-      if (index > 0) await new Promise(resolve => setTimeout(resolve, index * 2500)); // Stagger to prevent rate-limiting when hitting same CDN simultaneously
+      if (index > 0) await new Promise(resolve => setTimeout(resolve, index * 1000)); // Short stagger for simultaneous multi-site login without CDN blocks
       const loginUrl = custom_url || s.login_url;
       if (!loginUrl) {
         return { site_key: s.key, status: 'error', error_message: 'No login_url', elapsed_ms: 0 };
