@@ -71,7 +71,11 @@ Deno.serve(async (req) => {
 
     const settings = (await base44.asServiceRole.entities.AppSettings.list('-created_date', 1))[0] || {};
     let host = settings.browserless_endpoint || 'chrome.browserless.io';
-    if (!host.includes('.')) host = `${host}.browserless.io`;
+    if (['production-sfo', 'production-ap', 'production-eu'].includes(host)) {
+      host = 'chrome.browserless.io';
+    } else if (!host.includes('.')) {
+      host = `${host}.browserless.io`;
+    }
 
     const proxies = await base44.asServiceRole.entities.Proxy.list('-created_date', 200);
     const targets = proxies.filter((p) => p.enabled !== false && p.host && p.port);

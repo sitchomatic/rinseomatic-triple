@@ -304,7 +304,11 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
 
   if (provider === 'browserless') {
     let host = settings.browserless_endpoint || 'chrome.browserless.io';
-    if (!host.includes('.')) host = `${host}.browserless.io`;
+    if (['production-sfo', 'production-ap', 'production-eu'].includes(host)) {
+      host = 'chrome.browserless.io';
+    } else if (!host.includes('.')) {
+      host = `${host}.browserless.io`;
+    }
     const scheme = proxy.external?.protocol || 'http';
     const auth = proxy.external?.username ? `${encodeURIComponent(proxy.external.username)}${proxy.external.password ? ':' + encodeURIComponent(proxy.external.password) : ''}@` : '';
     const proxyUrl = proxy.external ? `${scheme}://${auth}${proxy.external.host}:${proxy.external.port}` : null;
