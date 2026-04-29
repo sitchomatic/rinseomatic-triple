@@ -336,7 +336,7 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
         
         const started = Date.now();
         try {
-          await page.goto(loginUrl, { waitUntil: 'networkidle2' });
+          await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 30000 });
           await page.waitForSelector(submitSel, { visible: true }).catch(() => {});
 
           for (let i = 0; i < passwords.length; i++) {

@@ -102,7 +102,7 @@ async function runBrowserlessProbe(settings, override, externalProxy) {
   }
   if (settings.browserless_stealth_proxy) params.set('stealth', 'true');
 
-  const code = "export default async ({ page }) => { await page.goto('https://ipinfo.io/json'); const text = await page.evaluate(() => document.body.innerText); return { data: text, type: 'application/json' }; };";
+  const code = "export default async ({ page }) => { await page.goto('https://ipinfo.io/json', { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {}); const text = await page.evaluate(() => document.body.innerText); return { data: text, type: 'application/json' }; };";
 
   const started = Date.now();
   const res = await fetch("https://" + host + "/function?" + params.toString(), {
@@ -140,7 +140,7 @@ async function runBrowserbaseProbe(settings, override, externalProxy) {
   });
   try {
     const page = await browser.newPage();
-    await page.goto('https://ipinfo.io/json', { waitUntil: 'networkidle2' });
+    await page.goto('https://ipinfo.io/json', { waitUntil: 'domcontentloaded', timeout: 15000 });
     text = await page.evaluate(() => document.body.innerText);
   } finally {
     await browser.close().catch(() => {});
