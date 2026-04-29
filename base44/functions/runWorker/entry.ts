@@ -117,8 +117,14 @@ Deno.serve(async (req) => {
       const idle = lastTested === 0 ? (now - startedAt) : (now - lastTested);
       if (idle > IDLE_MAX_MS) {
         // Confirmed idle — now do the expensive scan to recover.
-        const active = await base44.asServiceRole.entities.TestResult.filter({ run_id }, '-tested_at', 5000);
-        const stuck = active.filter((r) => r.status === 'queued' || r.status === 'running');
+        const stuckRunning = await base44.asServiceRole.entities.TestResult.filter(
+          { run_id, status: 'running' }, undefined, 5000
+        );
+        const stuckQueued = await base44.asServiceRole.entities.TestResult.filter(
+          { run_id, status: 'queued' }, undefined, 5000
+        );
+        const stuck = [...stuckRunning, ...stuckQueued];
+        
         await Promise.all(stuck.map((r) =>
           base44.asServiceRole.entities.TestResult.update(r.id, {
             status: 'error',
@@ -126,24 +132,13 @@ Deno.serve(async (req) => {
             tested_at: new Date().toISOString(),
           })
         ));
-        // Single-pass tally over the snapshot we already have, applying
-        // the stuck→error transition in-memory (avoids a second 5k-row read).
-        const stuckIds = new Set(stuck.map((r) => r.id));
-        let working = 0, failed = 0, errored = 0;
-        for (const r of active) {
-          if (stuckIds.has(r.id)) { errored++; continue; }
-          if (r.status === 'working') working++;
-          else if (r.status === 'failed') failed++;
-          else if (r.status === 'error') errored++;
-        }
+        
         await base44.asServiceRole.entities.TestRun.update(run_id, {
           status: 'failed',
           ended_at: new Date().toISOString(),
           elapsed_ms: now - startedAt,
           pending_count: 0,
-          working_count: working,
-          failed_count: failed,
-          error_count: errored,
+          error_count: (run.error_count || 0) + stuck.length,
         });
         return Response.json({ done: true, recovered: true, stuck: stuck.length });
       }
