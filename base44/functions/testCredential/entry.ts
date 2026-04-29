@@ -455,6 +455,10 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
   }
 
   if (provider === 'scrapingbee' || !provider) {
+    const userSel = site.username_selector || "input[type='email'], input[name='username']";
+    const passSel = site.password_selector || "input[type='password']";
+    const submitSel = site.submit_selector || "button[type='submit']";
+
     for (const pw of list) {
       const attemptIndex = passwords.indexOf(pw) + 1;
       const screenshotWait = attemptIndex === 1 ? 400 : 700;
@@ -462,12 +466,12 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
       const jsScenario = {
         strict: false,
         instructions: [
-          { wait_for: "#username" },
-          { wait_for: "#password" },
-          { wait_for: "#loginSubmit" },
-          { fill: ["#username", username] },
-          { fill: ["#password", pw] },
-          { click: "#loginSubmit" },
+          { wait_for: userSel },
+          { wait_for: passSel },
+          { wait_for: submitSel },
+          { fill: [userSel, username] },
+          { fill: [passSel, pw] },
+          { click: submitSel },
           { wait: screenshotWait },
           { wait: 5600 }
         ]
