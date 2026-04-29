@@ -1,11 +1,10 @@
-// Live network diagnostics for ScrapingBee.
-// Fires a tiny request through ScrapingBee with the current (or overridden)
-// proxy settings and reports the resolved IP + geo. Mirrors the proxy logic
-// in functions/testCredential so what you see here is what real runs use.
+// Live network diagnostics for all providers.
+// Fires a tiny request with the current (or overridden)
+// proxy settings and reports the resolved IP + geo.
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const API_BASE = 'https://app.scrapingbee.com/api/v1/';
+const SCRAPINGBEE_API_BASE = 'https://app.scrapingbee.com/api/v1/';
 
 async function logEvent(base44, f) {
   try {
@@ -22,10 +21,13 @@ async function logEvent(base44, f) {
 function buildProxyUrl(proxy) {
   if (!proxy?.host || !proxy?.port) return null;
   const scheme = proxy.protocol || 'http';
-  const auth = proxy.username
-    ? `${encodeURIComponent(proxy.username)}${proxy.password ? `:${encodeURIComponent(proxy.password)}` : ''}@`
-    : '';
-  return `${scheme}://${auth}${proxy.host}:${proxy.port}`;
+  let auth = '';
+  if (proxy.username) {
+    auth = encodeURIComponent(proxy.username);
+    if (proxy.password) auth += ":" + encodeURIComponent(proxy.password);
+    auth += "@";
+  }
+  return scheme + "://" + auth + proxy.host + ":" + proxy.port;
 }
 
 async function resolveDiagnosticProxy(base44, mode, settings, override) {
@@ -48,14 +50,16 @@ async function resolveDiagnosticProxy(base44, mode, settings, override) {
   return null;
 }
 
-function buildScrapingBeeProbeUrl(apiKey, settings, override, externalProxy) {
+async function runScrapingBeeProbe(settings, override, externalProxy) {
+  const apiKey = Deno.env.get('SCRAPINGBEE_API_KEY');
+  if (!apiKey) throw new Error('SCRAPINGBEE_API_KEY not set');
+
   const mode = override?.proxy_mode ?? settings.proxy_mode ?? 'premium';
   const country = (override?.country_code || settings.country_code || 'au').toLowerCase();
 
   const params = new URLSearchParams();
   params.set('api_key', apiKey);
   params.set('url', 'https://ipinfo.io/json');
-  // ipinfo returns plain JSON — no JS rendering needed.
   params.set('render_js', 'false');
   params.set('timeout', '30000');
 
@@ -71,7 +75,77 @@ function buildScrapingBeeProbeUrl(apiKey, settings, override, externalProxy) {
     if (proxyUrl) params.set('own_proxy', proxyUrl);
   }
 
-  return `${API_BASE}?${params.toString()}`;
+  const started = Date.now();
+  const res = await fetch(SCRAPINGBEE_API_BASE + "?" + params.toString(), { method: 'GET' });
+  const totalMs = Date.now() - started;
+
+  if (!res.ok) throw new Error("ScrapingBee " + res.status + ": " + await res.text().then(t => t.slice(0, 300)));
+  return { text: await res.text(), totalMs };
+}
+
+async function runBrowserlessProbe(settings, override, externalProxy) {
+  const token = Deno.env.get('BROWSERLESS_TOKEN');
+  if (!token) throw new Error('BROWSERLESS_TOKEN not set');
+
+  let host = settings.browserless_endpoint || 'chrome.browserless.io';
+  if (['production-sfo', 'production-ap', 'production-eu'].includes(host)) {
+    host = 'chrome.browserless.io';
+  } else if (!host.includes('.')) {
+    host = host + '.browserless.io';
+  }
+  const mode = override?.proxy_mode ?? settings.proxy_mode ?? 'premium';
+
+  const params = new URLSearchParams({ token });
+  if ((mode === 'external' || mode === 'pool') && externalProxy) {
+    const proxyUrl = buildProxyUrl(externalProxy);
+    if (proxyUrl) params.set('externalProxyServer', proxyUrl);
+  }
+  if (settings.browserless_stealth_proxy) params.set('stealth', 'true');
+
+  const code = "export default async ({ page }) => { await page.goto('https://ipinfo.io/json'); const text = await page.evaluate(() => document.body.innerText); return { data: text, type: 'application/json' }; };";
+
+  const started = Date.now();
+  const res = await fetch("https://" + host + "/function?" + params.toString(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code })
+  });
+  const totalMs = Date.now() - started;
+
+  if (!res.ok) throw new Error("Browserless " + res.status + ": " + await res.text());
+  const json = await res.json();
+  if (json.error) throw new Error(json.error);
+  return { text: json.data, totalMs };
+}
+
+async function runBrowserbaseProbe(settings, override, externalProxy) {
+  const bbApiKey = Deno.env.get('BROWSERBASE_API_KEY');
+  const bbProjectId = Deno.env.get('BROWSERBASE_PROJECT_ID');
+  if (!bbApiKey || !bbProjectId) throw new Error('Browserbase credentials not set');
+
+  const puppeteer = (await import('npm:puppeteer-core@22.7.1')).default;
+  const started = Date.now();
+  
+  const sessionRes = await fetch('https://www.browserbase.com/v1/sessions', {
+    method: 'POST',
+    headers: { 'X-BB-API-KEY': bbApiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectId: bbProjectId })
+  });
+  if (!sessionRes.ok) throw new Error("Browserbase session failed: " + await sessionRes.text());
+  const sessionData = await sessionRes.json();
+  
+  let text = '';
+  const browser = await puppeteer.connect({
+    browserWSEndpoint: "wss://connect.browserbase.com?apiKey=" + bbApiKey + "&sessionId=" + sessionData.id,
+  });
+  try {
+    const page = await browser.newPage();
+    await page.goto('https://ipinfo.io/json', { waitUntil: 'networkidle2' });
+    text = await page.evaluate(() => document.body.innerText);
+  } finally {
+    await browser.close().catch(() => {});
+  }
+  return { text, totalMs: Date.now() - started };
 }
 
 Deno.serve(async (req) => {
@@ -83,53 +157,55 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const override = body?.override || null;
 
-    const apiKey = Deno.env.get('SCRAPINGBEE_API_KEY');
-    if (!apiKey) {
-      return Response.json({ error: 'SCRAPINGBEE_API_KEY not set' }, { status: 500 });
-    }
-
     const settingsRows = await base44.asServiceRole.entities.AppSettings.list('-created_date', 1);
     const settings = settingsRows[0] || {};
 
+    const provider = settings.provider || 'scrapingbee';
     const mode = override?.proxy_mode ?? settings.proxy_mode ?? 'premium';
     const externalProxy = await resolveDiagnosticProxy(base44, mode, settings, override);
-    const url = buildScrapingBeeProbeUrl(apiKey, settings, override, externalProxy);
-    const started = Date.now();
-    const res = await fetch(url, { method: 'GET' });
-    const totalMs = Date.now() - started;
 
-    if (!res.ok) {
-      const text = await res.text();
+    let text = '';
+    let totalMs = 0;
+
+    try {
+      let result;
+      if (provider === 'browserbase') {
+        result = await runBrowserbaseProbe(settings, override, externalProxy);
+      } else if (provider === 'browserless') {
+        result = await runBrowserlessProbe(settings, override, externalProxy);
+      } else {
+        result = await runScrapingBeeProbe(settings, override, externalProxy);
+      }
+      text = result.text;
+      totalMs = result.totalMs;
+    } catch (e) {
       logEvent(base44, {
         level: 'error', category: 'network', delta_ms: totalMs,
-        message: `Diagnostics probe failed · ScrapingBee ${res.status}`,
+        message: "Diagnostics probe failed. " + provider + " Error: " + e.message,
       });
       return Response.json({
         ok: false,
         provider_reachable: false,
-        error: `ScrapingBee ${res.status}: ${text.slice(0, 300)}`,
+        error: e.message,
         elapsed_ms: totalMs,
       });
     }
 
-    // With render_js=false ScrapingBee returns the raw page body. ipinfo.io
-    // serves JSON, so res.text() is the JSON payload.
-    const text = await res.text();
     let info = {};
     try { info = JSON.parse(text); } catch (_) { /* keep info empty */ }
 
     logEvent(base44, {
       level: info.ip ? 'success' : 'warn', category: 'network', delta_ms: totalMs,
-      message: `Diagnostics probe · IP=${info.ip || '?'} country=${info.country || '?'} city=${info.city || '?'} org=${info.org || '?'}`,
+      message: "Diagnostics probe. IP=" + (info.ip || '?') + " country=" + (info.country || '?') + " city=" + (info.city || '?') + " org=" + (info.org || '?'),
     });
 
     return Response.json({
       ok: true,
-      provider: 'scrapingbee',
-      browserless_reachable: true, // backward-compat key for the existing UI panel
+      provider,
+      browserless_reachable: true,
       provider_reachable: true,
       proxy_mode: mode,
-      proxy_source: externalProxy ? (externalProxy.label || `${externalProxy.host}:${externalProxy.port}`) : null,
+      proxy_source: externalProxy ? (externalProxy.label || externalProxy.host + ":" + externalProxy.port) : null,
       country_requested: (override?.country_code || settings.country_code || 'au').toLowerCase(),
       ip: info.ip || null,
       country: info.country || null,
