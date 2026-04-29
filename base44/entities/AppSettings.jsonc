@@ -58,6 +58,11 @@
       "default": true,
       "description": "Enable stealth proxy mode for Browserless"
     },
+    "browserless_headful": {
+      "type": "boolean",
+      "default": false,
+      "description": "Run in headful mode (headless: false) for Browserless live debugging"
+    },
     "capture_video": {
       "type": "boolean",
       "default": true,

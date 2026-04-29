@@ -311,7 +311,7 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
     const params = new URLSearchParams({ token: credentials.token });
     if (proxyUrl) params.set('externalProxyServer', proxyUrl);
     if (settings.browserless_stealth_proxy) params.set('stealth', 'true');
-    params.set('headless', 'false'); // Run in headful mode for live debugging
+    if (settings.browserless_headful) params.set('headless', 'false');
     
     const url = `https://${region}.browserless.io/function?${params.toString()}`;
 

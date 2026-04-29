@@ -23,6 +23,7 @@ export default function BrowserlessSettingsPanel({ settings }) {
         return base44.entities.AppSettings.update(d.id, {
           browserless_endpoint: d.browserless_endpoint,
           browserless_stealth_proxy: d.browserless_stealth_proxy,
+          browserless_headful: d.browserless_headful,
           timeout_ms: d.timeout_ms,
           viewport_width: d.viewport_width,
           viewport_height: d.viewport_height,
@@ -50,6 +51,7 @@ export default function BrowserlessSettingsPanel({ settings }) {
   const isDirty =
     draft.browserless_endpoint !== settings?.browserless_endpoint ||
     draft.browserless_stealth_proxy !== settings?.browserless_stealth_proxy ||
+    draft.browserless_headful !== settings?.browserless_headful ||
     draft.timeout_ms !== settings?.timeout_ms ||
     draft.viewport_width !== settings?.viewport_width ||
     draft.viewport_height !== settings?.viewport_height ||
@@ -129,6 +131,12 @@ export default function BrowserlessSettingsPanel({ settings }) {
           help="Enable stealth proxy mode to bypass detection. Improves success rate on protected sites."
           checked={draft.browserless_stealth_proxy !== false}
           onChange={(v) => setDraft({ ...draft, browserless_stealth_proxy: v })}
+        />
+        <Toggle
+          label="Headful mode (Live Debugging)"
+          help="Turn off headless mode so you can visually watch the browser execute steps in your Browserless live-view dashboard."
+          checked={draft.browserless_headful === true}
+          onChange={(v) => setDraft({ ...draft, browserless_headful: v })}
         />
         <Toggle
           label="Capture video"
