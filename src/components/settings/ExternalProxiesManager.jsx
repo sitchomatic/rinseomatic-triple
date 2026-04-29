@@ -124,6 +124,7 @@ export default function ExternalProxiesManager({ proxies = [] }) {
                 {p.status && p.status !== "untested" && (
                   <span className={cn("text-[10px] font-mono", health.text)}>
                     {health.label}{p.latency_ms != null ? ` · ${p.latency_ms}ms` : ""}
+                    {p.total_pings > 0 ? ` · ${Math.round((p.failed_pings / p.total_pings) * 100)}% err` : ""}
                   </span>
                 )}
               </div>

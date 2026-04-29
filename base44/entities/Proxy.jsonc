@@ -68,6 +68,18 @@
     "enabled": {
       "type": "boolean",
       "default": true
+    },
+    "total_pings": {
+      "type": "number",
+      "default": 0
+    },
+    "failed_pings": {
+      "type": "number",
+      "default": 0
+    },
+    "consecutive_failures": {
+      "type": "number",
+      "default": 0
     }
   },
   "required": [

@@ -86,12 +86,27 @@ Deno.serve(async (req) => {
     const results = await Promise.allSettled(targets.map(async (p) => {
       const r = await pingOne(token, host, p);
       const status = classify(r.ok, r.latency);
+      
+      const totalPings = (p.total_pings || 0) + 1;
+      const failedPings = (p.failed_pings || 0) + (r.ok ? 0 : 1);
+      const consecutiveFailures = r.ok ? 0 : (p.consecutive_failures || 0) + 1;
+      const errorRate = failedPings / totalPings;
+      
+      let enabled = p.enabled !== false;
+      if (consecutiveFailures >= 3 || (totalPings >= 5 && errorRate > 0.6)) {
+        enabled = false;
+      }
+      
       await base44.asServiceRole.entities.Proxy.update(p.id, {
         status,
         latency_ms: r.latency,
         last_check: new Date().toISOString(),
+        total_pings: totalPings,
+        failed_pings: failedPings,
+        consecutive_failures: consecutiveFailures,
+        enabled,
       });
-      return { id: p.id, label: p.label || `${p.host}:${p.port}`, status, latency_ms: r.latency, error: r.error };
+      return { id: p.id, label: p.label || `${p.host}:${p.port}`, status, latency_ms: r.latency, error: r.error, disabled_now: !enabled && p.enabled !== false };
     })).then((settled) => settled.map((s, i) => s.status === 'fulfilled'
       ? s.value
       : { id: targets[i].id, label: targets[i].label || `${targets[i].host}:${targets[i].port}`, status: 'down', error: s.reason?.message }
