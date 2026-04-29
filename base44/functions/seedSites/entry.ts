@@ -16,7 +16,7 @@ const DEFAULT_SITES = [
   {
     key: 'ignition',
     label: 'Ignition',
-    login_url: 'https://www.ignitioncasino.ooo/login',
+    login_url: 'https://www.ignitioncasino.eu/login',
     username_selector: '#username',
     password_selector: '#password',
     submit_selector: '#loginSubmit',

