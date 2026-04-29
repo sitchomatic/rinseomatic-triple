@@ -537,6 +537,7 @@ function combine(perSite) {
 }
 
 Deno.serve(async (req) => {
+  const serveStarted = Date.now();
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
@@ -660,6 +661,12 @@ Deno.serve(async (req) => {
 
     if (results.length === 1) {
       const r = results[0];
+      await base44.asServiceRole.entities.AuditLog.create({
+        function_name: 'testCredential',
+        status: 'success',
+        metadata: JSON.stringify({ site_key: r.site_key, status: r.status, provider: settings.provider }),
+        execution_ms: Date.now() - serveStarted
+      }).catch(() => {});
       return Response.json({
         status: r.status,
         final_url: r.final_url,
@@ -672,8 +679,24 @@ Deno.serve(async (req) => {
         screenshots: r.screenshots,
       });
     }
+    await base44.asServiceRole.entities.AuditLog.create({
+      function_name: 'testCredential',
+      status: 'success',
+      metadata: JSON.stringify({ site_keys: results.map(r => r.site_key).join(','), provider: settings.provider }),
+      execution_ms: Date.now() - serveStarted
+    }).catch(() => {});
     return Response.json(combine(results));
   } catch (error) {
+    let base44;
+    try { base44 = createClientFromRequest(req); } catch (_) {}
+    if (base44) {
+      await base44.asServiceRole.entities.AuditLog.create({
+        function_name: 'testCredential',
+        status: 'error',
+        metadata: JSON.stringify({ error: error.message }),
+        execution_ms: Date.now() - serveStarted
+      }).catch(() => {});
+    }
     return Response.json({ status: 'error', error_message: error.message }, { status: 500 });
   }
 });

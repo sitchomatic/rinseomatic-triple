@@ -149,6 +149,7 @@ async function runBrowserbaseProbe(settings, override, externalProxy) {
 }
 
 Deno.serve(async (req) => {
+  const serveStarted = Date.now();
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
@@ -179,6 +180,12 @@ Deno.serve(async (req) => {
       text = result.text;
       totalMs = result.totalMs;
     } catch (e) {
+      await base44.asServiceRole.entities.AuditLog.create({
+        function_name: 'runDiagnostics',
+        status: 'error',
+        metadata: JSON.stringify({ provider, error: e.message }),
+        execution_ms: Date.now() - serveStarted
+      }).catch(() => {});
       logEvent(base44, {
         level: 'error', category: 'network', delta_ms: totalMs,
         message: "Diagnostics probe failed. " + provider + " Error: " + e.message,
@@ -198,6 +205,13 @@ Deno.serve(async (req) => {
       level: info.ip ? 'success' : 'warn', category: 'network', delta_ms: totalMs,
       message: "Diagnostics probe. IP=" + (info.ip || '?') + " country=" + (info.country || '?') + " city=" + (info.city || '?') + " org=" + (info.org || '?'),
     });
+
+    await base44.asServiceRole.entities.AuditLog.create({
+      function_name: 'runDiagnostics',
+      status: 'success',
+      metadata: JSON.stringify({ provider, mode, ip: info.ip || null }),
+      execution_ms: Date.now() - serveStarted
+    }).catch(() => {});
 
     return Response.json({
       ok: true,

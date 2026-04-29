@@ -90,6 +90,7 @@ async function testOne(base44, site, result, run) {
 }
 
 Deno.serve(async (req) => {
+  const serveStarted = Date.now();
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
@@ -296,6 +297,13 @@ Deno.serve(async (req) => {
     }
 
     await base44.asServiceRole.entities.TestRun.update(run_id, updatePayload);
+
+    await base44.asServiceRole.entities.AuditLog.create({
+      function_name: 'runWorker',
+      status: 'success',
+      metadata: JSON.stringify({ run_id, processed: claimable.length, isDone }),
+      execution_ms: Date.now() - serveStarted
+    }).catch(() => {});
 
     return Response.json({ done: isDone, processed: claimable.length });
   } catch (error) {

@@ -15,6 +15,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const MAX_PARALLEL_RUNS = 10;
 
 Deno.serve(async (req) => {
+  const serveStarted = Date.now();
   try {
     const base44 = createClientFromRequest(req);
 
@@ -50,6 +51,13 @@ Deno.serve(async (req) => {
     results.forEach((r, i) => {
       if (r.status === 'rejected') console.error(`runWorker failed for ${slice[i].id}:`, r.reason?.message);
     });
+
+    await base44.asServiceRole.entities.AuditLog.create({
+      function_name: 'runWorkerScheduled',
+      status: 'success',
+      metadata: JSON.stringify({ processed, deferred: Math.max(0, active.length - slice.length) }),
+      execution_ms: Date.now() - serveStarted
+    }).catch(() => {});
 
     return Response.json({ done: true, total: active.length, processed, deferred: Math.max(0, active.length - slice.length) });
   } catch (error) {

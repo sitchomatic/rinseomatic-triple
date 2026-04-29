@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { LayoutDashboard, KeyRound, Play, Settings as SettingsIcon, Shield, Radio, Clock, TrendingUp, Terminal } from "lucide-react";
+import { LayoutDashboard, KeyRound, Play, Settings as SettingsIcon, Shield, Radio, Clock, TrendingUp, Terminal, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ThemeToggle from "@/components/ThemeToggle";
 import TerminalPanel from "@/components/Terminal/TerminalPanel";
@@ -13,6 +13,7 @@ const NAV = [
   { to: "/schedule", label: "Schedule", icon: Clock },
   { to: "/analytics", label: "Analytics", icon: TrendingUp },
   { to: "/audit", label: "Audit log", icon: Radio },
+  { to: "/activity", label: "Activity", icon: Activity },
   { to: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 

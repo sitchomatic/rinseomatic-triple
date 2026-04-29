@@ -14,6 +14,7 @@ import Settings from '@/pages/Settings';
 import Audit from '@/pages/Audit.jsx';
 import Schedule from '@/pages/Schedule.jsx';
 import Analytics from '@/pages/Analytics.jsx';
+import Activity from '@/pages/Activity.jsx';
 import { initializeTerminalLogging } from '@/lib/terminalSetup';
 
 // Initialize terminal logging on app startup
@@ -48,6 +49,7 @@ const AuthenticatedApp = () => {
         <Route path="/audit" element={<Audit />} />
         <Route path="/schedule" element={<Schedule />} />
         <Route path="/analytics" element={<Analytics />} />
+        <Route path="/activity" element={<Activity />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>

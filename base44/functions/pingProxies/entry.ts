@@ -72,6 +72,7 @@ function classify(ok, latency) {
 }
 
 Deno.serve(async (req) => {
+  const serveStarted = Date.now();
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
@@ -128,8 +129,25 @@ Deno.serve(async (req) => {
       : { id: targets[i].id, label: targets[i].label || `${targets[i].host}:${targets[i].port}`, status: 'down', error: s.reason?.message }
     ));
 
+    await base44.asServiceRole.entities.AuditLog.create({
+      function_name: 'pingProxies',
+      status: 'success',
+      metadata: JSON.stringify({ checked: results.length }),
+      execution_ms: Date.now() - serveStarted
+    }).catch(() => {});
+
     return Response.json({ checked: results.length, results });
   } catch (error) {
+    let base44;
+    try { base44 = createClientFromRequest(req); } catch (_) {}
+    if (base44) {
+      await base44.asServiceRole.entities.AuditLog.create({
+        function_name: 'pingProxies',
+        status: 'error',
+        metadata: JSON.stringify({ error: error.message }),
+        execution_ms: Date.now() - serveStarted
+      }).catch(() => {});
+    }
     return Response.json({ error: error.message }, { status: 500 });
   }
 });

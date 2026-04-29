@@ -22,6 +22,7 @@ async function logEvent(base44, f) {
 // status: cancelled before the cron's next tick has a chance to claim more.
 
 Deno.serve(async (req) => {
+  const serveStarted = Date.now();
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
@@ -35,7 +36,13 @@ Deno.serve(async (req) => {
     if (!run) return Response.json({ error: 'Run not found' }, { status: 404 });
 
     if (run.status === 'completed' || run.status === 'cancelled' || run.status === 'failed') {
-      return Response.json({ ok: true, already_terminal: true, status: run.status });
+      await base44.asServiceRole.entities.AuditLog.create({
+      function_name: 'cancelRun',
+      status: 'success',
+      metadata: JSON.stringify({ run_id, already_terminal: true, status: run.status }),
+      execution_ms: Date.now() - serveStarted
+    }).catch(() => {});
+    return Response.json({ ok: true, already_terminal: true, status: run.status });
     }
 
     // L28 fix: race-free cancel via incremental counter math.
@@ -79,8 +86,25 @@ Deno.serve(async (req) => {
       message: `Run cancelled · ${run.label || run_id} · ${cancelled.length} in-flight rows aborted`,
     });
 
+    await base44.asServiceRole.entities.AuditLog.create({
+      function_name: 'cancelRun',
+      status: 'success',
+      metadata: JSON.stringify({ run_id, cancelled: cancelled.length }),
+      execution_ms: Date.now() - serveStarted
+    }).catch(() => {});
+
     return Response.json({ ok: true, cancelled: cancelled.length });
   } catch (error) {
+    let base44;
+    try { base44 = createClientFromRequest(req); } catch (_) {}
+    if (base44) {
+      await base44.asServiceRole.entities.AuditLog.create({
+        function_name: 'cancelRun',
+        status: 'error',
+        metadata: JSON.stringify({ error: error.message }),
+        execution_ms: Date.now() - serveStarted
+      }).catch(() => {});
+    }
     return Response.json({ error: error.message }, { status: 500 });
   }
 });

@@ -94,6 +94,7 @@ async function healOneRun(base44, run, config) {
 }
 
 Deno.serve(async (req) => {
+  const serveStarted = Date.now();
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
@@ -112,6 +113,12 @@ Deno.serve(async (req) => {
     );
 
     if (active.length === 0) {
+      await base44.asServiceRole.entities.AuditLog.create({
+        function_name: 'autoHealRuns',
+        status: 'success',
+        metadata: JSON.stringify({ scanned: 0, healed: 0, note: 'no active runs' }),
+        execution_ms: Date.now() - serveStarted
+      }).catch(() => {});
       return Response.json({ ok: true, healed: [], note: 'no active runs' });
     }
 
@@ -125,8 +132,25 @@ Deno.serve(async (req) => {
       }
     }
 
+    await base44.asServiceRole.entities.AuditLog.create({
+      function_name: 'autoHealRuns',
+      status: 'success',
+      metadata: JSON.stringify({ scanned: active.length, healed: summaries.length }),
+      execution_ms: Date.now() - serveStarted
+    }).catch(() => {});
+
     return Response.json({ ok: true, scanned: active.length, healed: summaries });
   } catch (error) {
+    let base44;
+    try { base44 = createClientFromRequest(req); } catch (_) {}
+    if (base44) {
+      await base44.asServiceRole.entities.AuditLog.create({
+        function_name: 'autoHealRuns',
+        status: 'error',
+        metadata: JSON.stringify({ error: error.message }),
+        execution_ms: Date.now() - serveStarted
+      }).catch(() => {});
+    }
     return Response.json({ ok: false, error: error.message }, { status: 500 });
   }
 });
