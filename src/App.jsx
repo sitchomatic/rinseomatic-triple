@@ -16,6 +16,7 @@ import Schedule from '@/pages/Schedule.jsx';
 import Analytics from '@/pages/Analytics.jsx';
 import Activity from '@/pages/Activity.jsx';
 import Monitor from '@/pages/Monitor.jsx';
+import Diagnostics from '@/pages/Diagnostics.jsx';
 import { initializeTerminalLogging } from '@/lib/terminalSetup';
 
 // Initialize terminal logging on app startup
@@ -52,6 +53,7 @@ const AuthenticatedApp = () => {
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/activity" element={<Activity />} />
         <Route path="/monitor" element={<Monitor />} />
+        <Route path="/diagnostics" element={<Diagnostics />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
