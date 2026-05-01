@@ -1,10 +1,11 @@
-import React from "react";
+import React, { useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Upload } from "lucide-react";
 import { toast } from "sonner";
 import { parseCSV } from "@/lib/csv";
 
@@ -14,8 +15,20 @@ import { parseCSV } from "@/lib/csv";
 export default function CsvImportDialog({ open, onOpenChange }) {
   const qc = useQueryClient();
   const [text, setText] = React.useState("");
+  const fileInputRef = useRef(null);
 
   React.useEffect(() => { if (open) setText(""); }, [open]);
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setText(event.target.result);
+    };
+    reader.readAsText(file);
+    e.target.value = null;
+  };
 
   const preview = React.useMemo(() => {
     const rows = parseCSV(text);
@@ -35,18 +48,44 @@ export default function CsvImportDialog({ open, onOpenChange }) {
 
   const mut = useMutation({
     mutationFn: async (records) => {
-      const CHUNK = 100;
-      let total = 0;
+      const CHUNK = 50;
+      let totalCreated = 0;
+      let totalUpdated = 0;
+      
       for (let i = 0; i < records.length; i += CHUNK) {
         const batch = records.slice(i, i + CHUNK);
-        await base44.entities.Credential.bulkCreate(batch);
-        total += batch.length;
+        const usernames = batch.map(r => r.username);
+        
+        const existing = await base44.entities.Credential.filter({ username: { $in: usernames } }, null, CHUNK);
+        const existingMap = new Map(existing.map(c => [c.username.toLowerCase(), c]));
+        
+        const toCreate = [];
+        const toUpdate = [];
+        
+        for (const rec of batch) {
+          const usernameLower = rec.username.toLowerCase();
+          if (existingMap.has(usernameLower)) {
+             toUpdate.push({ id: existingMap.get(usernameLower).id, data: rec });
+          } else {
+             toCreate.push(rec);
+          }
+        }
+        
+        if (toCreate.length > 0) {
+          await base44.entities.Credential.bulkCreate(toCreate);
+          totalCreated += toCreate.length;
+        }
+        
+        for (const up of toUpdate) {
+          await base44.entities.Credential.update(up.id, up.data);
+          totalUpdated++;
+        }
       }
-      return total;
+      return { created: totalCreated, updated: totalUpdated };
     },
-    onSuccess: (count) => {
+    onSuccess: ({ created, updated }) => {
       qc.invalidateQueries({ queryKey: ["credentials"] });
-      toast.success(`Imported ${count} credential${count === 1 ? "" : "s"}`);
+      toast.success(`Imported: ${created} created, ${updated} updated`);
       onOpenChange(false);
     },
     onError: (e) => toast.error(e?.message || "Import failed"),
@@ -63,7 +102,25 @@ export default function CsvImportDialog({ open, onOpenChange }) {
             Paste rows in the format <span className="font-mono text-foreground">username, password, [extra1, extra2…]</span>. A header row is auto-detected.
           </p>
           <div className="grid gap-1.5">
-            <Label className="text-xs">CSV content</Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">CSV content</Label>
+              <input 
+                type="file" 
+                accept=".csv" 
+                className="hidden" 
+                ref={fileInputRef} 
+                onChange={handleFileUpload} 
+              />
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-7 text-xs gap-1.5" 
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Upload CSV File
+              </Button>
+            </div>
             <Textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
