@@ -72,11 +72,19 @@ export default function RecordingViewer({ testResult, open, onOpenChange }) {
         <div className="flex-1 overflow-auto thin-scroll">
           {activeTab === "recording" && hasRecording && (
             <div className="flex flex-col items-center justify-center gap-4 p-4">
-              <video
-                controls
-                className="w-full max-w-2xl rounded-lg border border-border bg-black"
-                src={testResult.recording_url}
-              />
+              {testResult.recording_url.includes('embed=true') ? (
+                 <iframe 
+                   src={testResult.recording_url}
+                   className="w-full max-w-2xl h-[500px] rounded-lg border border-border bg-background"
+                   allowFullScreen
+                 />
+              ) : (
+                <video
+                  controls
+                  className="w-full max-w-2xl rounded-lg border border-border bg-black"
+                  src={testResult.recording_url}
+                />
+              )}
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <span>Format: {testResult.recording_format || "unknown"}</span>
                 {testResult.elapsed_ms && (
@@ -125,7 +133,7 @@ export default function RecordingViewer({ testResult, open, onOpenChange }) {
         </div>
 
         <div className="flex gap-2 justify-end border-t border-border pt-4">
-          {activeTab === "recording" && hasRecording && (
+          {activeTab === "recording" && hasRecording && !testResult.recording_url.includes('embed=true') && (
             <Button
               variant="outline"
               size="sm"
