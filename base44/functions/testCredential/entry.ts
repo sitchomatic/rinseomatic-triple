@@ -26,17 +26,25 @@ async function storeRecording(base44, recordingBuffer, format, testResultId) {
   }
 }
 
-async function storeScreenshot(base44, pngBuffer, testResultId, step) {
+async function storeScreenshot(base44, base64Data, siteKey, step) {
   try {
-    if (!pngBuffer || pngBuffer.length === 0) return null;
-    const fileName = `screenshot-${testResultId}-${step || 'unknown'}.png`;
+    if (!base64Data) return null;
+    const binString = atob(base64Data);
+    const bytes = new Uint8Array(binString.length);
+    for (let i = 0; i < binString.length; i++) bytes[i] = binString.charCodeAt(i);
     const { file_uri } = await base44.integrations.Core.UploadPrivateFile({
-      file: new Blob([pngBuffer], { type: 'image/png' }),
+      file: new Blob([bytes], { type: 'image/png' }),
     });
     const { signed_url } = await base44.integrations.Core.CreateFileSignedUrl({
       file_uri,
-      expires_in: 2592000, // 30 days
+      expires_in: 2592000,
     });
+    await base44.asServiceRole.entities.Screenshot.create({
+      site: siteKey,
+      step_label: step,
+      image_url: signed_url,
+      captured_at: new Date().toISOString()
+    }).catch(()=>null);
     return signed_url;
   } catch (e) {
     console.error('Failed to store screenshot:', e.message);
@@ -371,11 +379,13 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
             }
             const isError = lowerText.includes('incorrect') || lowerText.includes('invalid') || lowerText.includes('wrong');
             if (!isError) {
-               return { data: { status: 'working', working_password: pw, final_url: page.url(), elapsed: Date.now() - started }, type: 'application/json' };
+               const screenshot = await page.screenshot({ encoding: 'base64' }).catch(()=>null);
+               return { data: { status: 'working', working_password: pw, final_url: page.url(), elapsed: Date.now() - started, screenshot }, type: 'application/json' };
             }
           }
           
-          return { data: { status: 'failed', final_url: page.url(), elapsed: Date.now() - started }, type: 'application/json' };
+          const screenshot = await page.screenshot({ encoding: 'base64' }).catch(()=>null);
+          return { data: { status: 'failed', final_url: page.url(), elapsed: Date.now() - started, screenshot }, type: 'application/json' };
         } catch (e) {
           throw e;
         }
@@ -391,7 +401,12 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
     if (json.error) throw new Error(json.error);
     
     const data = json.data;
-    return { site_key: site.key, status: data.status || 'error', final_url: data.final_url, working_password: data.working_password, elapsed_ms: elapsed, success_marker_found: data.status === 'working', screenshots: [] };
+    const screenshots = [];
+    if (settings.capture_screenshots && data.screenshot) {
+      const url = await storeScreenshot(base44, data.screenshot, site.key, 'browserless-final');
+      if (url) screenshots.push({ step: 'final', url, captured_at: new Date().toISOString() });
+    }
+    return { site_key: site.key, status: data.status || 'error', final_url: data.final_url, working_password: data.working_password, elapsed_ms: elapsed, success_marker_found: data.status === 'working', screenshots };
   }
 
   if (provider === 'browserbase') {
@@ -500,23 +515,29 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
       let json;
       try { json = await res.json(); } catch(e) { throw new Error("ScrapingBee non-JSON response"); }
 
+      const screenshots = [];
+      if (settings.capture_screenshots && json.screenshot) {
+        const url = await storeScreenshot(base44, json.screenshot, site.key, 'scrapingbee-final');
+        if (url) screenshots.push({ step: 'final', url, captured_at: new Date().toISOString() });
+      }
+
       const body = (json.body || '').toLowerCase();
       if (body.includes('cloudflare') || body.includes('just a moment') || body.includes('access denied') || body.includes('security check')) {
         throw new Error('Cloudflare / IP Blocked');
       }
       if (body.includes("disabled")) {
-        return { site_key: site.key, status: 'failed', final_url: json.resolved_url, success_marker_found: false, elapsed_ms: totalElapsed, screenshots: [] };
+        return { site_key: site.key, status: 'failed', final_url: json.resolved_url, success_marker_found: false, elapsed_ms: totalElapsed, screenshots };
       }
       const isError = body.includes('incorrect') || body.includes('invalid') || body.includes('wrong');
       if (!isError) {
-        return { site_key: site.key, status: 'working', final_url: json.resolved_url, success_marker_found: true, working_password: pw, elapsed_ms: totalElapsed, screenshots: [] };
+        return { site_key: site.key, status: 'working', final_url: json.resolved_url, success_marker_found: true, working_password: pw, elapsed_ms: totalElapsed, screenshots };
       }
       
-      lastFailed = { status: 'failed', final_url: json.resolved_url };
+      lastFailed = { status: 'failed', final_url: json.resolved_url, screenshots };
       if (strategy === 'single') break;
     }
     
-    if (lastFailed) return { site_key: site.key, status: 'failed', final_url: lastFailed.final_url, success_marker_found: false, elapsed_ms: totalElapsed, screenshots: [] };
+    if (lastFailed) return { site_key: site.key, status: 'failed', final_url: lastFailed.final_url, success_marker_found: false, elapsed_ms: totalElapsed, screenshots: lastFailed.screenshots || [] };
     throw new Error(lastError || 'Advanced testing failed');
   }
 
