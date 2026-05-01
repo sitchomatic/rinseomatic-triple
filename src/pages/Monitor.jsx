@@ -1,13 +1,33 @@
 import React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import PageHeader from "@/components/shared/PageHeader";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { MonitorPlay, Camera, Cloud, Wifi, ExternalLink, RefreshCw, Clock, Video } from "lucide-react";
+import { MonitorPlay, Camera, Cloud, Wifi, ExternalLink, RefreshCw, Clock, Video, Activity } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { toast } from "sonner";
 
 export default function Monitor() {
+  const testMut = useMutation({
+    mutationFn: async (provider) => {
+      const res = await base44.functions.invoke("providerMonitor", { provider });
+      return { provider, data: res.data };
+    },
+    onSuccess: ({ provider, data }) => {
+      if (data.ok) {
+        if (provider === "scrapingbee" && data.data) {
+          toast.success(`${provider} connection successful! Used: ${data.data.used_api_credit}/${data.data.max_api_credit} credits.`);
+        } else {
+          toast.success(`${provider} connection successful!`);
+        }
+      } else {
+        toast.error(`${provider} connection failed: ${data.error}`);
+      }
+    },
+    onError: (e) => toast.error(e.message)
+  });
+
   const { data, refetch, isFetching } = useQuery({
     queryKey: ["providerMonitor"],
     queryFn: async () => {
@@ -34,10 +54,15 @@ export default function Monitor() {
         
         {/* BROWSERLESS NATIVE SECTION */}
         <section className="space-y-4">
-          <div className="flex items-center gap-2 border-b border-border/60 pb-2">
-            <Wifi className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-semibold tracking-tight">Browserless.io Live View</h2>
-            <span className="text-xs text-muted-foreground ml-2 hidden sm:inline">Active WebSockets & CDP Inspectors</span>
+          <div className="flex items-center justify-between border-b border-border/60 pb-2">
+            <div className="flex items-center gap-2">
+              <Wifi className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold tracking-tight">Browserless.io Live View</h2>
+              <span className="text-xs text-muted-foreground ml-2 hidden sm:inline">Active WebSockets & CDP Inspectors</span>
+            </div>
+            <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={() => testMut.mutate('browserless')} disabled={testMut.isPending}>
+              <Activity className="h-3 w-3" /> Connection Test
+            </Button>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {!data?.browserless?.sessions?.length ? (
@@ -66,10 +91,15 @@ export default function Monitor() {
 
         {/* BROWSERBASE NATIVE SECTION */}
         <section className="space-y-4">
-          <div className="flex items-center gap-2 border-b border-border/60 pb-2">
-            <Cloud className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-semibold tracking-tight">Browserbase Recordings</h2>
-            <span className="text-xs text-muted-foreground ml-2 hidden sm:inline">Native Session APIs & Videos</span>
+          <div className="flex items-center justify-between border-b border-border/60 pb-2">
+            <div className="flex items-center gap-2">
+              <Cloud className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold tracking-tight">Browserbase Recordings</h2>
+              <span className="text-xs text-muted-foreground ml-2 hidden sm:inline">Native Session APIs & Videos</span>
+            </div>
+            <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={() => testMut.mutate('browserbase')} disabled={testMut.isPending}>
+              <Activity className="h-3 w-3" /> Connection Test
+            </Button>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {!data?.browserbase?.length ? (
@@ -106,10 +136,15 @@ export default function Monitor() {
 
         {/* SCRAPINGBEE & GLOBAL SCREENSHOTS SECTION */}
         <section className="space-y-4">
-          <div className="flex items-center gap-2 border-b border-border/60 pb-2">
-            <Camera className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-semibold tracking-tight">ScrapingBee & Universal Media</h2>
-            <span className="text-xs text-muted-foreground ml-2 hidden sm:inline">Captured Screenshots Vault</span>
+          <div className="flex items-center justify-between border-b border-border/60 pb-2">
+            <div className="flex items-center gap-2">
+              <Camera className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold tracking-tight">ScrapingBee & Universal Media</h2>
+              <span className="text-xs text-muted-foreground ml-2 hidden sm:inline">Captured Screenshots Vault</span>
+            </div>
+            <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={() => testMut.mutate('scrapingbee')} disabled={testMut.isPending}>
+              <Activity className="h-3 w-3" /> Connection Test
+            </Button>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {!data?.screenshots?.length ? (

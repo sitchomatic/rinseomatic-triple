@@ -15,6 +15,41 @@ Deno.serve(async (req) => {
     let blHost = settings.browserless_endpoint || 'chrome.browserless.io';
     if (!blHost.includes('.')) blHost += '.browserless.io';
     if (['production-sfo', 'production-ap', 'production-eu'].includes(blHost)) blHost = 'chrome.browserless.io';
+    const sbApiKey = settings.scrapingbee_api_key || Deno.env.get('SCRAPINGBEE_API_KEY');
+
+    if (req.method === 'POST') {
+      const body = await req.json().catch(() => ({}));
+      const provider = body.provider;
+      
+      if (provider === 'browserbase') {
+        if (!bbApiKey || !bbProjectId) return Response.json({ ok: false, error: 'API Key or Project ID missing' });
+        try {
+          const res = await fetch(`https://www.browserbase.com/v1/sessions?projectId=${bbProjectId}`, { headers: { 'X-BB-API-KEY': bbApiKey } });
+          if (res.ok) return Response.json({ ok: true, status: res.status });
+          return Response.json({ ok: false, error: await res.text() });
+        } catch (e) { return Response.json({ ok: false, error: e.message }); }
+      }
+      
+      if (provider === 'browserless') {
+        if (!blToken) return Response.json({ ok: false, error: 'API Token missing' });
+        try {
+          const res = await fetch(`https://${blHost}/config?token=${blToken}`);
+          if (res.ok) return Response.json({ ok: true, status: res.status });
+          return Response.json({ ok: false, error: await res.text() });
+        } catch (e) { return Response.json({ ok: false, error: e.message }); }
+      }
+      
+      if (provider === 'scrapingbee') {
+        if (!sbApiKey) return Response.json({ ok: false, error: 'API Key missing' });
+        try {
+          const res = await fetch(`https://app.scrapingbee.com/api/v1/usage?api_key=${sbApiKey}`);
+          if (res.ok) return Response.json({ ok: true, status: res.status, data: await res.json() });
+          return Response.json({ ok: false, error: await res.text() });
+        } catch (e) { return Response.json({ ok: false, error: e.message }); }
+      }
+
+      return Response.json({ error: 'Unknown provider' }, { status: 400 });
+    }
 
     // 1. Fetch Browserbase sessions via official REST API
     let bbSessions = [];
