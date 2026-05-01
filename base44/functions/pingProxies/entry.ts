@@ -51,7 +51,12 @@ async function pingOne(token, host, proxy) {
     const data = json?.data || json;
     
     let ip = null, country = null;
+    let isBlocked = false;
     if (data.text) {
+      const lower = data.text.toLowerCase();
+      if (lower.includes('cloudflare') || lower.includes('just a moment') || lower.includes('access denied') || lower.includes('security check')) {
+         isBlocked = true;
+      }
       try {
         const info = JSON.parse(data.text);
         ip = info.ip;
@@ -59,7 +64,7 @@ async function pingOne(token, host, proxy) {
       } catch (_) {}
     }
     
-    return { ok: !!data.ok, latency: data.elapsed ?? elapsed, error: data.error, ip, country };
+    return { ok: !!data.ok && !isBlocked, latency: data.elapsed ?? elapsed, error: data.error || (isBlocked ? 'Blocked by Cloudflare/Access Denied' : null), ip, country, isBlocked };
   } catch (e) {
     return { ok: false, latency: Date.now() - started, error: e.message };
   }
@@ -108,8 +113,29 @@ Deno.serve(async (req) => {
       const errorRate = failedPings / totalPings;
       
       let enabled = p.enabled !== false;
-      if (consecutiveFailures >= 3 || (totalPings >= 5 && errorRate > 0.6)) {
+      let disabledReason = null;
+      if (r.isBlocked) {
         enabled = false;
+        disabledReason = 'Blocked by Cloudflare / Access Denied';
+      } else if (r.latency > 5000) {
+        enabled = false;
+        disabledReason = `High latency (${r.latency}ms)`;
+      } else if (consecutiveFailures >= 3 || (totalPings >= 5 && errorRate > 0.6)) {
+        enabled = false;
+        disabledReason = `High error rate / Consecutive failures (${consecutiveFailures})`;
+      }
+
+      if (!enabled && p.enabled !== false) {
+        try {
+          const admins = await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 1);
+          if (admins.length > 0) {
+            await base44.asServiceRole.integrations.Core.SendEmail({
+              to: admins[0].email,
+              subject: `Proxy Auto-Disabled: ${p.label || p.host}`,
+              body: `The proxy ${p.label || p.host}:${p.port} has been automatically disabled by the health monitor.\n\nReason: ${disabledReason}\nLatency: ${r.latency}ms\nLast IP: ${r.ip || p.last_ip || 'Unknown'}`
+            });
+          }
+        } catch (_) {}
       }
       
       await base44.asServiceRole.entities.Proxy.update(p.id, {
