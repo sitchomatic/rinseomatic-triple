@@ -110,6 +110,7 @@ export default function BrowserbaseSettingsPanel({ settings }) {
               <SelectItem value="us-east-1">US East 1</SelectItem>
               <SelectItem value="eu-central-1">EU Central 1</SelectItem>
               <SelectItem value="ap-southeast-1">AP Southeast 1</SelectItem>
+              <SelectItem value="au">Australia (AU) - Max Stealth</SelectItem>
             </SelectContent>
           </Select>
         </Field>

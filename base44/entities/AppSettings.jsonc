@@ -50,7 +50,8 @@
         "us-west-2",
         "us-east-1",
         "eu-central-1",
-        "ap-southeast-1"
+        "ap-southeast-1",
+        "au"
       ],
       "default": "us-west-2",
       "description": "Browserbase session region"

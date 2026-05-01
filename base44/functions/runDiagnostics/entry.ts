@@ -126,10 +126,18 @@ async function runBrowserbaseProbe(settings, override, externalProxy) {
   const puppeteer = (await import('npm:puppeteer-core@22.7.1')).default;
   const started = Date.now();
   
+  const bbPayload = { 
+    projectId: bbProjectId,
+    browserSettings: { stealth: true }
+  };
+  if (settings.browserbase_region) {
+    bbPayload.region = settings.browserbase_region;
+  }
+
   const sessionRes = await fetch('https://www.browserbase.com/v1/sessions', {
     method: 'POST',
     headers: { 'X-BB-API-KEY': bbApiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ projectId: bbProjectId })
+    body: JSON.stringify(bbPayload)
   });
   if (!sessionRes.ok) throw new Error("Browserbase session failed: " + await sessionRes.text());
   const sessionData = await sessionRes.json();

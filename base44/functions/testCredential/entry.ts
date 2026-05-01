@@ -433,10 +433,18 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
   if (provider === 'browserbase') {
     const started = Date.now();
     try {
+      const bbPayload = { 
+        projectId: credentials.bbProjectId,
+        browserSettings: { stealth: true }
+      };
+      if (settings.browserbase_region) {
+        bbPayload.region = settings.browserbase_region;
+      }
+
       const sessionRes = await fetch('https://www.browserbase.com/v1/sessions', {
         method: 'POST',
         headers: { 'X-BB-API-KEY': credentials.bbApiKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId: credentials.bbProjectId })
+        body: JSON.stringify(bbPayload)
       });
       if (!sessionRes.ok) throw new Error(`Browserbase session failed: ${await sessionRes.text()}`);
       const sessionData = await sessionRes.json();
