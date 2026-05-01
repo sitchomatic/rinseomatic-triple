@@ -128,9 +128,22 @@ async function runBrowserbaseProbe(settings, override, externalProxy) {
   
   const bbPayload = { 
     projectId: bbProjectId,
-    browserSettings: { stealth: true }
+    browserSettings: { 
+      advancedStealth: true,
+      verified: true,
+      recordSession: settings.capture_video !== false,
+      logSession: true,
+      solveCaptchas: true,
+      os: "windows"
+    },
+    keepAlive: !!settings.browserbase_keep_alive
   };
-  if (settings.browserbase_region) {
+  if (settings.browserbase_region === 'au') {
+    bbPayload.proxies = [{
+      type: "browserbase",
+      geolocation: { country: "AU", city: "Melbourne" }
+    }];
+  } else if (settings.browserbase_region) {
     bbPayload.region = settings.browserbase_region;
   }
 
