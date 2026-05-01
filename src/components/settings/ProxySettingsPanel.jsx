@@ -67,6 +67,16 @@ export default function ProxySettingsPanel({ settings, proxies = [], proxyPools 
       </div>
 
       <div className="grid sm:grid-cols-2 gap-3">
+        <Field label="API Key" help="Overrides env secret SCRAPINGBEE_API_KEY.">
+          <Input
+            type="password"
+            value={draft.scrapingbee_api_key || ""}
+            onChange={(e) => setDraft({ ...draft, scrapingbee_api_key: e.target.value })}
+            placeholder="••••••••••••"
+            className="font-mono text-xs"
+          />
+        </Field>
+
         <Field label="Proxy tier" help={PROXY_MODES.find((m) => m.value === mode)?.help}>
           <Select value={mode} onValueChange={(v) => setDraft({ ...draft, proxy_mode: v })}>
             <SelectTrigger><SelectValue /></SelectTrigger>

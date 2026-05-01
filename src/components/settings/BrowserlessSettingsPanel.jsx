@@ -21,6 +21,7 @@ export default function BrowserlessSettingsPanel({ settings }) {
     mutationFn: async (d) => {
       if (d.id) {
         return base44.entities.AppSettings.update(d.id, {
+          browserless_token: d.browserless_token,
           browserless_endpoint: d.browserless_endpoint,
           browserless_stealth_proxy: d.browserless_stealth_proxy,
           browserless_headful: d.browserless_headful,
@@ -49,6 +50,7 @@ export default function BrowserlessSettingsPanel({ settings }) {
   }
 
   const isDirty =
+    draft.browserless_token !== settings?.browserless_token ||
     draft.browserless_endpoint !== settings?.browserless_endpoint ||
     draft.browserless_stealth_proxy !== settings?.browserless_stealth_proxy ||
     draft.browserless_headful !== settings?.browserless_headful ||
@@ -76,6 +78,16 @@ export default function BrowserlessSettingsPanel({ settings }) {
       </div>
 
       <div className="grid sm:grid-cols-2 gap-3">
+        <Field label="API Token" help="Overrides env secret BROWSERLESS_TOKEN if set.">
+          <Input
+            type="password"
+            value={draft.browserless_token || ""}
+            onChange={(e) => setDraft({ ...draft, browserless_token: e.target.value })}
+            placeholder="••••••••••••"
+            className="font-mono text-xs"
+          />
+        </Field>
+
         <Field label="Endpoint" help="Browserless endpoint host (e.g. chrome.browserless.io).">
           <Input
             value={draft.browserless_endpoint || "chrome.browserless.io"}

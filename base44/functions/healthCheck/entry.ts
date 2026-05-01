@@ -13,9 +13,9 @@ Deno.serve(async (req) => {
       ok: true,
       provider: appSettings.provider,
       credentials: {
-        scrapingbee: !!Deno.env.get('SCRAPINGBEE_API_KEY'),
-        browserbase: !!(Deno.env.get('BROWSERBASE_PROJECT_ID') && Deno.env.get('BROWSERBASE_API_KEY')),
-        browserless: !!Deno.env.get('BROWSERLESS_TOKEN'),
+        scrapingbee: !!(appSettings.scrapingbee_api_key || Deno.env.get('SCRAPINGBEE_API_KEY')),
+        browserbase: !!((appSettings.browserbase_project_id || Deno.env.get('BROWSERBASE_PROJECT_ID')) && (appSettings.browserbase_api_key || Deno.env.get('BROWSERBASE_API_KEY'))),
+        browserless: !!(appSettings.browserless_token || Deno.env.get('BROWSERLESS_TOKEN')),
       },
       timestamp: new Date().toISOString(),
     };

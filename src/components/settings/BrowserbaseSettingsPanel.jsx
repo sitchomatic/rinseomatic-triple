@@ -21,6 +21,8 @@ export default function BrowserbaseSettingsPanel({ settings }) {
     mutationFn: async (d) => {
       if (d.id) {
         return base44.entities.AppSettings.update(d.id, {
+          browserbase_project_id: d.browserbase_project_id,
+          browserbase_api_key: d.browserbase_api_key,
           browserbase_region: d.browserbase_region,
           browserbase_keep_alive: d.browserbase_keep_alive,
           timeout_ms: d.timeout_ms,
@@ -48,6 +50,8 @@ export default function BrowserbaseSettingsPanel({ settings }) {
   }
 
   const isDirty =
+    draft.browserbase_project_id !== settings?.browserbase_project_id ||
+    draft.browserbase_api_key !== settings?.browserbase_api_key ||
     draft.browserbase_region !== settings?.browserbase_region ||
     draft.browserbase_keep_alive !== settings?.browserbase_keep_alive ||
     draft.timeout_ms !== settings?.timeout_ms ||
@@ -74,6 +78,25 @@ export default function BrowserbaseSettingsPanel({ settings }) {
       </div>
 
       <div className="grid sm:grid-cols-2 gap-3">
+        <Field label="Project ID" help="Overrides env secret BROWSERBASE_PROJECT_ID.">
+          <Input
+            value={draft.browserbase_project_id || ""}
+            onChange={(e) => setDraft({ ...draft, browserbase_project_id: e.target.value })}
+            placeholder="prj_..."
+            className="font-mono text-xs"
+          />
+        </Field>
+
+        <Field label="API Key" help="Overrides env secret BROWSERBASE_API_KEY.">
+          <Input
+            type="password"
+            value={draft.browserbase_api_key || ""}
+            onChange={(e) => setDraft({ ...draft, browserbase_api_key: e.target.value })}
+            placeholder="••••••••••••"
+            className="font-mono text-xs"
+          />
+        </Field>
+
         <Field label="Session region" help="Where Browserbase spins up browser sessions.">
           <Select
             value={draft.browserbase_region || "us-west-2"}

@@ -86,10 +86,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const token = Deno.env.get('BROWSERLESS_TOKEN');
-    if (!token) return Response.json({ error: 'BROWSERLESS_TOKEN not set' }, { status: 500 });
-
     const settings = (await base44.asServiceRole.entities.AppSettings.list('-created_date', 1))[0] || {};
+    
+    const token = settings.browserless_token || Deno.env.get('BROWSERLESS_TOKEN');
+    if (!token) return Response.json({ error: 'Browserless Token not set' }, { status: 500 });
     let host = settings.browserless_endpoint || 'chrome.browserless.io';
     if (['production-sfo', 'production-ap', 'production-eu'].includes(host)) {
       host = 'chrome.browserless.io';

@@ -571,15 +571,15 @@ Deno.serve(async (req) => {
 
     // Validate provider-specific API keys
     if (settings.provider === 'scrapingbee' || !settings.provider) {
-      const apiKey = Deno.env.get('SCRAPINGBEE_API_KEY');
-      if (!apiKey) return Response.json({ error: 'SCRAPINGBEE_API_KEY not set' }, { status: 500 });
+      const apiKey = settings.scrapingbee_api_key || Deno.env.get('SCRAPINGBEE_API_KEY');
+      if (!apiKey) return Response.json({ error: 'ScrapingBee API Key not set' }, { status: 500 });
     } else if (settings.provider === 'browserbase') {
-      const projectId = Deno.env.get('BROWSERBASE_PROJECT_ID');
-      const apiKey = Deno.env.get('BROWSERBASE_API_KEY');
+      const projectId = settings.browserbase_project_id || Deno.env.get('BROWSERBASE_PROJECT_ID');
+      const apiKey = settings.browserbase_api_key || Deno.env.get('BROWSERBASE_API_KEY');
       if (!projectId || !apiKey) return Response.json({ error: 'Browserbase credentials not set' }, { status: 500 });
     } else if (settings.provider === 'browserless') {
-      const token = Deno.env.get('BROWSERLESS_TOKEN');
-      if (!token) return Response.json({ error: 'BROWSERLESS_TOKEN not set' }, { status: 500 });
+      const token = settings.browserless_token || Deno.env.get('BROWSERLESS_TOKEN');
+      if (!token) return Response.json({ error: 'Browserless Token not set' }, { status: 500 });
     }
 
     const strategy = runStrategy || settings.default_login_strategy || 'multi_password';
@@ -633,10 +633,10 @@ Deno.serve(async (req) => {
       const useLegacy = body.use_legacy_fallback === true;
       const provider = settings.provider || 'scrapingbee';
       const providerCredentials = {
-        apiKey: Deno.env.get('SCRAPINGBEE_API_KEY'),
-        token: Deno.env.get('BROWSERLESS_TOKEN'),
-        bbProjectId: Deno.env.get('BROWSERBASE_PROJECT_ID'),
-        bbApiKey: Deno.env.get('BROWSERBASE_API_KEY')
+        apiKey: settings.scrapingbee_api_key || Deno.env.get('SCRAPINGBEE_API_KEY'),
+        token: settings.browserless_token || Deno.env.get('BROWSERLESS_TOKEN'),
+        bbProjectId: settings.browserbase_project_id || Deno.env.get('BROWSERBASE_PROJECT_ID'),
+        bbApiKey: settings.browserbase_api_key || Deno.env.get('BROWSERBASE_API_KEY')
       };
 
       let advancedResult = null;

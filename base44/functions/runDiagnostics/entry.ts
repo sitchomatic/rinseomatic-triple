@@ -51,8 +51,8 @@ async function resolveDiagnosticProxy(base44, mode, settings, override) {
 }
 
 async function runScrapingBeeProbe(settings, override, externalProxy) {
-  const apiKey = Deno.env.get('SCRAPINGBEE_API_KEY');
-  if (!apiKey) throw new Error('SCRAPINGBEE_API_KEY not set');
+  const apiKey = settings.scrapingbee_api_key || Deno.env.get('SCRAPINGBEE_API_KEY');
+  if (!apiKey) throw new Error('ScrapingBee API Key not set');
 
   const mode = override?.proxy_mode ?? settings.proxy_mode ?? 'premium';
   const country = (override?.country_code || settings.country_code || 'au').toLowerCase();
@@ -84,8 +84,8 @@ async function runScrapingBeeProbe(settings, override, externalProxy) {
 }
 
 async function runBrowserlessProbe(settings, override, externalProxy) {
-  const token = Deno.env.get('BROWSERLESS_TOKEN');
-  if (!token) throw new Error('BROWSERLESS_TOKEN not set');
+  const token = settings.browserless_token || Deno.env.get('BROWSERLESS_TOKEN');
+  if (!token) throw new Error('Browserless Token not set');
 
   let host = settings.browserless_endpoint || 'chrome.browserless.io';
   if (['production-sfo', 'production-ap', 'production-eu'].includes(host)) {
@@ -119,8 +119,8 @@ async function runBrowserlessProbe(settings, override, externalProxy) {
 }
 
 async function runBrowserbaseProbe(settings, override, externalProxy) {
-  const bbApiKey = Deno.env.get('BROWSERBASE_API_KEY');
-  const bbProjectId = Deno.env.get('BROWSERBASE_PROJECT_ID');
+  const bbApiKey = settings.browserbase_api_key || Deno.env.get('BROWSERBASE_API_KEY');
+  const bbProjectId = settings.browserbase_project_id || Deno.env.get('BROWSERBASE_PROJECT_ID');
   if (!bbApiKey || !bbProjectId) throw new Error('Browserbase credentials not set');
 
   const puppeteer = (await import('npm:puppeteer-core@22.7.1')).default;

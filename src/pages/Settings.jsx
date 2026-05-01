@@ -97,7 +97,7 @@ export default function Settings() {
       <PageHeader
         eyebrow="03 · config"
         title="Settings"
-        description="Sites, proxies, and browser defaults. API tokens are stored server-side as secrets."
+        description="Sites, proxies, and browser defaults. Provide API tokens directly in the app or via environment variables."
         actions={
           <Button
             size="sm" variant="outline" className="gap-2"

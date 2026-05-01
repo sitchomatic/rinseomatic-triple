@@ -17,6 +17,18 @@
       "default": "scrapingbee",
       "description": "Browser automation provider"
     },
+    "scrapingbee_api_key": {
+      "type": "string"
+    },
+    "browserless_token": {
+      "type": "string"
+    },
+    "browserbase_api_key": {
+      "type": "string"
+    },
+    "browserbase_project_id": {
+      "type": "string"
+    },
     "timeout_ms": {
       "type": "number",
       "default": 60000,
