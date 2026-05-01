@@ -5,14 +5,33 @@ import { Play, X, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function RecordingViewer({ testResult, open, onOpenChange }) {
-  const [activeTab, setActiveTab] = useState("recording");
-  const [currentScreenshot, setCurrentScreenshot] = useState(0);
-
   const hasRecording = !!testResult?.recording_url;
   const hasScreenshots = Array.isArray(testResult?.screenshots) && testResult.screenshots.length > 0;
 
+  const [activeTab, setActiveTab] = useState(hasScreenshots && !hasRecording ? "screenshots" : "recording");
+  const [currentScreenshot, setCurrentScreenshot] = useState(0);
+
+  // Force reset tab state when opening a new test result
+  React.useEffect(() => {
+    if (open) {
+      setActiveTab(hasScreenshots && !hasRecording ? "screenshots" : "recording");
+      setCurrentScreenshot(0);
+    }
+  }, [testResult, open, hasRecording, hasScreenshots]);
+
   if (!hasRecording && !hasScreenshots) {
-    return null;
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-md flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Run Details</DialogTitle>
+          </DialogHeader>
+          <div className="p-6 text-center text-muted-foreground text-sm">
+            No screenshots or recordings are available for this run.
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
   }
 
   const screenshots = testResult?.screenshots || [];

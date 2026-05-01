@@ -343,6 +343,19 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
         const submitSel = ${JSON.stringify(submitSel)};
         
         const started = Date.now();
+        const screenshots = [];
+        let polling = true;
+        const pollScreenshots = async () => {
+          while (polling) {
+            try {
+              const b64 = await page.screenshot({ encoding: 'base64' });
+              if (b64) screenshots.push(b64);
+            } catch(e) {}
+            await new Promise(r => setTimeout(r, 500));
+          }
+        };
+        pollScreenshots();
+        
         try {
           await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
           await page.waitForSelector(userSel, { visible: true, timeout: 30000 }).catch(() => {});
@@ -375,18 +388,20 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
                throw new Error('Cloudflare / IP Blocked');
             }
             if (lowerText.includes('disabled') || lowerText.includes('has been disabled')) {
-               return { data: { status: 'failed', final_url: page.url(), elapsed: Date.now() - started }, type: 'application/json' };
+               polling = false;
+               return { data: { status: 'failed', final_url: page.url(), elapsed: Date.now() - started, screenshots }, type: 'application/json' };
             }
             const isError = lowerText.includes('incorrect') || lowerText.includes('invalid') || lowerText.includes('wrong');
             if (!isError) {
-               const screenshot = await page.screenshot({ encoding: 'base64' }).catch(()=>null);
-               return { data: { status: 'working', working_password: pw, final_url: page.url(), elapsed: Date.now() - started, screenshot }, type: 'application/json' };
+               polling = false;
+               return { data: { status: 'working', working_password: pw, final_url: page.url(), elapsed: Date.now() - started, screenshots }, type: 'application/json' };
             }
           }
           
-          const screenshot = await page.screenshot({ encoding: 'base64' }).catch(()=>null);
-          return { data: { status: 'failed', final_url: page.url(), elapsed: Date.now() - started, screenshot }, type: 'application/json' };
+          polling = false;
+          return { data: { status: 'failed', final_url: page.url(), elapsed: Date.now() - started, screenshots }, type: 'application/json' };
         } catch (e) {
+          polling = false;
           throw e;
         }
       };
@@ -402,9 +417,12 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
     
     const data = json.data;
     const screenshots = [];
-    if (settings.capture_screenshots && data.screenshot) {
-      const url = await storeScreenshot(base44, data.screenshot, site.key, 'browserless-final');
-      if (url) screenshots.push({ step: 'final', url, captured_at: new Date().toISOString() });
+    // Default 500ms screenshot poll
+    if (Array.isArray(data.screenshots)) {
+      const uploadResults = await Promise.all(data.screenshots.map((b64, i) => storeScreenshot(base44, b64, site.key, 'poll-' + i)));
+      uploadResults.forEach((url, i) => {
+        if (url) screenshots.push({ step: 'poll-' + i, url, captured_at: new Date().toISOString() });
+      });
     }
     return { site_key: site.key, status: data.status || 'error', final_url: data.final_url, working_password: data.working_password, elapsed_ms: elapsed, success_marker_found: data.status === 'working', screenshots };
   }
@@ -428,8 +446,25 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
       const passSel = site.password_selector || "input[type='password']";
       const submitSel = site.submit_selector || "button[type='submit']";
 
+      const screenshots = [];
+      let polling = true;
+      let pageRef = null;
+      const pollScreenshots = async () => {
+        while (polling) {
+          try {
+            if (pageRef) {
+              const b64 = await pageRef.screenshot({ encoding: 'base64' });
+              if (b64) screenshots.push(b64);
+            }
+          } catch(e) {}
+          await new Promise(r => setTimeout(r, 500));
+        }
+      };
+      pollScreenshots();
+
       try {
         const page = await browser.newPage();
+        pageRef = page;
         await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
         try {
           await page.waitForSelector(userSel, { visible: true, timeout: 30000 });
@@ -463,15 +498,28 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
             throw new Error('Cloudflare / IP Blocked');
           }
           if (text.includes('disabled') || text.includes('has been disabled')) {
-            return { site_key: site.key, status: 'failed', final_url: page.url(), elapsed_ms: Date.now() - started, screenshots: [], success_marker_found: false };
+            polling = false;
+            const finalScreenshots = [];
+            const uploadResults = await Promise.all(screenshots.map((b64, idx) => storeScreenshot(base44, b64, site.key, 'poll-' + idx)));
+            uploadResults.forEach((url, idx) => { if (url) finalScreenshots.push({ step: 'poll-' + idx, url, captured_at: new Date().toISOString() }); });
+            return { site_key: site.key, status: 'failed', final_url: page.url(), elapsed_ms: Date.now() - started, screenshots: finalScreenshots, success_marker_found: false };
           }
           const isError = text.includes('incorrect') || text.includes('invalid') || text.includes('wrong');
           if (!isError) {
-            return { site_key: site.key, status: 'working', working_password: pw, final_url: page.url(), elapsed_ms: Date.now() - started, success_marker_found: true, screenshots: [] };
+            polling = false;
+            const finalScreenshots = [];
+            const uploadResults = await Promise.all(screenshots.map((b64, idx) => storeScreenshot(base44, b64, site.key, 'poll-' + idx)));
+            uploadResults.forEach((url, idx) => { if (url) finalScreenshots.push({ step: 'poll-' + idx, url, captured_at: new Date().toISOString() }); });
+            return { site_key: site.key, status: 'working', working_password: pw, final_url: page.url(), elapsed_ms: Date.now() - started, success_marker_found: true, screenshots: finalScreenshots };
           }
         }
-        return { site_key: site.key, status: 'failed', final_url: page.url(), elapsed_ms: Date.now() - started, screenshots: [], success_marker_found: false };
+        polling = false;
+        const finalScreenshots = [];
+        const uploadResults = await Promise.all(screenshots.map((b64, idx) => storeScreenshot(base44, b64, site.key, 'poll-' + idx)));
+        uploadResults.forEach((url, idx) => { if (url) finalScreenshots.push({ step: 'poll-' + idx, url, captured_at: new Date().toISOString() }); });
+        return { site_key: site.key, status: 'failed', final_url: page.url(), elapsed_ms: Date.now() - started, screenshots: finalScreenshots, success_marker_found: false };
       } finally {
+        polling = false;
         await browser.close().catch(() => {});
       }
     } catch (e) {

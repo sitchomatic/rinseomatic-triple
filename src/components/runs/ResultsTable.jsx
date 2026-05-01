@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import StatusPill from "@/components/shared/StatusPill";
 import { formatMs } from "@/lib/sites";
-import { Play } from "lucide-react";
+import { Play, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import RecordingViewer from "@/components/runs/RecordingViewer";
 
@@ -63,8 +63,9 @@ export default function ResultsTable({ results }) {
         {decorated.map(({ row: r, label, message, tone }, i) => (
           <div
             key={r.id}
-            className="grid grid-cols-[minmax(0,2fr)_110px_100px_minmax(0,3fr)_80px_40px] gap-3 px-4 py-2.5 items-center text-xs font-mono animate-row-in"
+            className="grid grid-cols-[minmax(0,2fr)_110px_100px_minmax(0,3fr)_80px_40px] gap-3 px-4 py-2.5 items-center text-xs font-mono animate-row-in hover:bg-secondary/50 cursor-pointer transition-colors"
             style={{ animationDelay: `${Math.min(i * 8, 200)}ms` }}
+            onClick={() => setViewRecording(r)}
           >
             <div className="truncate">{r.username}</div>
             <div><StatusPill status={r.status} /></div>
@@ -81,16 +82,10 @@ export default function ResultsTable({ results }) {
             </div>
             <div className="text-muted-foreground">{formatMs(r.elapsed_ms)}</div>
             <div>
-              {(r.recording_url || (Array.isArray(r.screenshots) && r.screenshots.length > 0)) && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-primary"
-                  onClick={() => setViewRecording(r)}
-                  title="View recording/screenshots"
-                >
-                  <Play className="h-3 w-3" />
-                </Button>
+              {(r.recording_url || (Array.isArray(r.screenshots) && r.screenshots.length > 0)) ? (
+                <Play className="h-3 w-3 text-muted-foreground" />
+              ) : (
+                <Camera className="h-3 w-3 opacity-20" />
               )}
             </div>
           </div>
