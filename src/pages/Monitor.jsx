@@ -4,11 +4,15 @@ import { base44 } from "@/api/base44Client";
 import PageHeader from "@/components/shared/PageHeader";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { MonitorPlay, Camera, Cloud, Wifi, ExternalLink, RefreshCw, Clock, Video, Activity } from "lucide-react";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { MonitorPlay, Camera, Cloud, Wifi, ExternalLink, RefreshCw, Clock, Video, Activity, CheckCircle2, XCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
 export default function Monitor() {
+  const [activeView, setActiveView] = React.useState(null);
+  const [statusChecks, setStatusChecks] = React.useState({});
+
   const testMut = useMutation({
     mutationFn: async (provider) => {
       const res = await base44.functions.invoke("providerMonitor", { provider });
@@ -16,12 +20,14 @@ export default function Monitor() {
     },
     onSuccess: ({ provider, data }) => {
       if (data.ok) {
+        setStatusChecks(prev => ({ ...prev, [provider]: 'online' }));
         if (provider === "scrapingbee" && data.data) {
           toast.success(`${provider} connection successful! Used: ${data.data.used_api_credit}/${data.data.max_api_credit} credits.`);
         } else {
           toast.success(`${provider} connection successful!`);
         }
       } else {
+        setStatusChecks(prev => ({ ...prev, [provider]: 'offline' }));
         toast.error(`${provider} connection failed: ${data.error}`);
       }
     },
@@ -58,6 +64,8 @@ export default function Monitor() {
             <div className="flex items-center gap-2">
               <Wifi className="h-5 w-5 text-primary" />
               <h2 className="text-lg font-semibold tracking-tight">Browserless.io Live View</h2>
+              {statusChecks['browserless'] === 'online' && <span className="flex items-center gap-1 ml-2 px-2 py-0.5 rounded-md bg-success/10 text-success text-[10px] font-semibold uppercase tracking-wider border border-success/20"><CheckCircle2 className="w-3 h-3"/> Online</span>}
+              {statusChecks['browserless'] === 'offline' && <span className="flex items-center gap-1 ml-2 px-2 py-0.5 rounded-md bg-destructive/10 text-destructive text-[10px] font-semibold uppercase tracking-wider border border-destructive/20"><XCircle className="w-3 h-3"/> Offline</span>}
               <span className="text-xs text-muted-foreground ml-2 hidden sm:inline">Active WebSockets & CDP Inspectors</span>
             </div>
             <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={() => testMut.mutate('browserless')} disabled={testMut.isPending}>
@@ -77,10 +85,18 @@ export default function Monitor() {
                     <CardDescription className="text-xs truncate" title={session.pageUrl}>{session.pageUrl || 'Navigating...'}</CardDescription>
                   </CardHeader>
                   <CardContent>
-                     <Button variant="secondary" size="sm" className="w-full gap-2 text-xs hover:bg-primary hover:text-primary-foreground transition-all" asChild>
-                      <a href={`https://${data.browserless.host}/devtools/inspector.html?wss=${data.browserless.host}/devtools/page/${session.pageId || session.id}&token=${data.browserless.token}`} target="_blank" rel="noreferrer">
-                        <MonitorPlay className="h-3.5 w-3.5" /> Open DevTools Inspector
-                      </a>
+                    <Button 
+                      variant="secondary" 
+                      size="sm" 
+                      className="w-full gap-2 text-xs hover:bg-primary hover:text-primary-foreground transition-all"
+                      onClick={() => setActiveView({ 
+                        type: 'iframe', 
+                        title: `Live Inspector: ${session.id || session.pageId}`, 
+                        description: session.pageUrl, 
+                        url: `https://${data.browserless.host}/devtools/inspector.html?wss=${data.browserless.host}/devtools/page/${session.pageId || session.id}&token=${data.browserless.token}` 
+                      })}
+                    >
+                      <MonitorPlay className="h-3.5 w-3.5" /> Open DevTools Inspector
                     </Button>
                   </CardContent>
                 </Card>
@@ -95,6 +111,8 @@ export default function Monitor() {
             <div className="flex items-center gap-2">
               <Cloud className="h-5 w-5 text-primary" />
               <h2 className="text-lg font-semibold tracking-tight">Browserbase Recordings</h2>
+              {statusChecks['browserbase'] === 'online' && <span className="flex items-center gap-1 ml-2 px-2 py-0.5 rounded-md bg-success/10 text-success text-[10px] font-semibold uppercase tracking-wider border border-success/20"><CheckCircle2 className="w-3 h-3"/> Online</span>}
+              {statusChecks['browserbase'] === 'offline' && <span className="flex items-center gap-1 ml-2 px-2 py-0.5 rounded-md bg-destructive/10 text-destructive text-[10px] font-semibold uppercase tracking-wider border border-destructive/20"><XCircle className="w-3 h-3"/> Offline</span>}
               <span className="text-xs text-muted-foreground ml-2 hidden sm:inline">Native Session APIs & Videos</span>
             </div>
             <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={() => testMut.mutate('browserbase')} disabled={testMut.isPending}>
@@ -121,11 +139,19 @@ export default function Monitor() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <Button variant="secondary" size="sm" className="w-full gap-2 text-xs" asChild>
-                      <a href={`https://www.browserbase.com/sessions/${session.id}`} target="_blank" rel="noreferrer">
-                        {session.status === 'RUNNING' ? <MonitorPlay className="h-3.5 w-3.5" /> : <Video className="h-3.5 w-3.5" />} 
-                        {session.status === 'RUNNING' ? 'Live Session View' : 'Watch Recording'}
-                      </a>
+                    <Button 
+                      variant="secondary" 
+                      size="sm" 
+                      className="w-full gap-2 text-xs"
+                      onClick={() => setActiveView({ 
+                        type: 'iframe', 
+                        title: `Browserbase Session: ${session.id}`, 
+                        description: `Status: ${session.status}`, 
+                        url: `https://www.browserbase.com/sessions/${session.id}` 
+                      })}
+                    >
+                      {session.status === 'RUNNING' ? <MonitorPlay className="h-3.5 w-3.5" /> : <Video className="h-3.5 w-3.5" />} 
+                      {session.status === 'RUNNING' ? 'Live Session View' : 'Watch Recording'}
                     </Button>
                   </CardContent>
                 </Card>
@@ -140,6 +166,8 @@ export default function Monitor() {
             <div className="flex items-center gap-2">
               <Camera className="h-5 w-5 text-primary" />
               <h2 className="text-lg font-semibold tracking-tight">ScrapingBee & Universal Media</h2>
+              {statusChecks['scrapingbee'] === 'online' && <span className="flex items-center gap-1 ml-2 px-2 py-0.5 rounded-md bg-success/10 text-success text-[10px] font-semibold uppercase tracking-wider border border-success/20"><CheckCircle2 className="w-3 h-3"/> Online</span>}
+              {statusChecks['scrapingbee'] === 'offline' && <span className="flex items-center gap-1 ml-2 px-2 py-0.5 rounded-md bg-destructive/10 text-destructive text-[10px] font-semibold uppercase tracking-wider border border-destructive/20"><XCircle className="w-3 h-3"/> Offline</span>}
               <span className="text-xs text-muted-foreground ml-2 hidden sm:inline">Captured Screenshots Vault</span>
             </div>
             <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={() => testMut.mutate('scrapingbee')} disabled={testMut.isPending}>
@@ -154,8 +182,13 @@ export default function Monitor() {
             ) : (
               data.screenshots.map(ss => (
                 <Card key={ss.id} className="overflow-hidden bg-card flex flex-col hover:border-primary/30 transition-colors">
-                  <div className="aspect-[4/3] relative bg-black/60 border-b border-border/50 flex items-center justify-center">
-                    <img src={ss.image_url} alt="Screenshot" className="absolute inset-0 w-full h-full object-contain hover:scale-105 transition-transform duration-500" />
+                  <div className="aspect-[4/3] relative bg-black/60 border-b border-border/50 flex items-center justify-center overflow-hidden">
+                    <button 
+                      onClick={() => setActiveView({ type: 'screenshot', title: ss.site, description: ss.step_label, url: ss.image_url })}
+                      className="absolute inset-0 w-full h-full cursor-pointer focus:outline-none group"
+                    >
+                      <img src={ss.image_url} alt="Screenshot" className="absolute inset-0 w-full h-full object-contain group-hover:scale-105 transition-transform duration-500" />
+                    </button>
                   </div>
                   <CardContent className="p-3.5 flex-1 flex flex-col justify-between bg-card/40">
                     <div>
@@ -179,6 +212,32 @@ export default function Monitor() {
         </section>
 
       </div>
+
+      <Dialog open={!!activeView} onOpenChange={(open) => !open && setActiveView(null)}>
+        <DialogContent className="max-w-[90vw] w-[1200px] h-[85vh] flex flex-col p-0 overflow-hidden bg-background gap-0 border-border shadow-2xl">
+          <div className="p-4 border-b border-border flex-shrink-0 flex items-center justify-between bg-card/50">
+            <div>
+              <DialogTitle className="font-mono text-sm">{activeView?.title}</DialogTitle>
+              <DialogDescription className="text-xs truncate max-w-lg" title={activeView?.description}>{activeView?.description}</DialogDescription>
+            </div>
+            {activeView?.type === 'iframe' && (
+              <Button variant="outline" size="sm" asChild className="h-8 text-xs">
+                <a href={activeView.url} target="_blank" rel="noreferrer">
+                  <ExternalLink className="w-3 h-3 mr-2" /> Open in New Tab
+                </a>
+              </Button>
+            )}
+          </div>
+          <div className="flex-1 overflow-hidden bg-black/95 relative flex items-center justify-center">
+            {activeView?.type === 'screenshot' && (
+              <img src={activeView.url} alt="Full Screen Screenshot" className="max-w-full max-h-full object-contain drop-shadow-2xl" />
+            )}
+            {activeView?.type === 'iframe' && (
+              <iframe src={activeView.url} className="w-full h-full border-0 bg-white" allowFullScreen />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
