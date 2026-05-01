@@ -79,6 +79,9 @@ async function testOne(base44, site, result, run) {
       working_password: data.working_password,
       error_message: data.error_message,
       elapsed_ms: data.elapsed_ms ?? (Date.now() - started),
+      screenshots: data.screenshots || [],
+      recording_url: data.recording_url || null,
+      recording_format: data.recording_format || null,
     };
   } catch (e) {
     return {
@@ -244,6 +247,9 @@ Deno.serve(async (req) => {
         elapsed_ms: o.elapsed_ms || 0,
         tested_at: new Date().toISOString(),
         live_url: null, // clear live-view URL on completion
+        screenshots: o.screenshots || [],
+        recording_url: o.recording_url || null,
+        recording_format: o.recording_format || null,
       });
       // Per-credential status mirroring removed — credentials are now global
       // (no per-site status). Per-(credential, site) outcomes live in TestResult.
