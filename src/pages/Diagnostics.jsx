@@ -4,7 +4,9 @@ import { base44 } from "@/api/base44Client";
 import PageHeader from "@/components/shared/PageHeader";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, AlertTriangle, ShieldAlert, FileSearch, ArrowRight, RotateCw, Database, Ban } from "lucide-react";
+import { Download, AlertTriangle, ShieldAlert, FileSearch, ArrowRight, RotateCw, Database, Ban, ServerCrash, ChevronDown } from "lucide-react";
+import SmartRetryDialog from "@/components/diagnostics/SmartRetryDialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 
@@ -17,19 +19,19 @@ export default function Diagnostics() {
     }
   });
 
-  const handleExport = async () => {
-    const loadingToast = toast.loading("Compiling system logs for export...");
+  const handleExport = async (format) => {
+    const loadingToast = toast.loading(`Compiling system logs for ${format.toUpperCase()} export...`);
     try {
-      const res = await base44.functions.invoke("exportLogs", {});
-      const blob = new Blob([res.data.csv], { type: 'text/csv' });
+      const res = await base44.functions.invoke("exportLogs", { format });
+      const blob = new Blob([res.data.data], { type: res.data.type });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `system_logs_export_${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = `system_logs_export_${new Date().toISOString().split('T')[0]}.${format}`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
-      toast.success("Logs exported successfully.", { id: loadingToast });
+      toast.success(`Logs exported successfully as ${format.toUpperCase()}.`, { id: loadingToast });
     } catch (e) {
       toast.error("Export failed: " + e.message, { id: loadingToast });
     }
@@ -37,8 +39,9 @@ export default function Diagnostics() {
 
   const getIcon = (type) => {
     switch(type) {
-      case 'IP Block / CAPTCHA': return <ShieldAlert className="h-4 w-4 text-destructive" />;
-      case 'Site Update / Selector Timeout': return <FileSearch className="h-4 w-4 text-warning" />;
+      case 'CAPTCHA/Anti-Bot': return <ShieldAlert className="h-4 w-4 text-destructive" />;
+      case 'Structural Changes': return <FileSearch className="h-4 w-4 text-warning" />;
+      case 'Proxy Failures': return <ServerCrash className="h-4 w-4 text-destructive" />;
       case 'Account Disabled': return <Ban className="h-4 w-4 text-muted-foreground" />;
       case 'Invalid Credentials': return <Database className="h-4 w-4 text-info" />;
       default: return <AlertTriangle className="h-4 w-4 text-muted-foreground" />;
@@ -56,9 +59,17 @@ export default function Diagnostics() {
             <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isFetching} className="gap-2">
               <RotateCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} /> Refresh Analysis
             </Button>
-            <Button size="sm" className="gap-2" onClick={handleExport}>
-              <Download className="h-4 w-4" /> Export System Logs
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" className="gap-2">
+                  <Download className="h-4 w-4" /> Export Complete Logs <ChevronDown className="h-3 w-3 opacity-50"/>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => handleExport('csv')}>Export as CSV</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport('json')}>Export as JSON</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         }
       />
@@ -101,12 +112,8 @@ export default function Diagnostics() {
                     {pattern.suggestion}
                   </p>
                   <div className="flex gap-2">
-                    {pattern.type === 'IP Block / CAPTCHA' && (
-                      <Button variant="secondary" size="sm" className="w-full text-xs" asChild>
-                        <Link to="/settings"><ArrowRight className="h-3 w-3 mr-1"/> Tune Proxies</Link>
-                      </Button>
-                    )}
-                    {pattern.type === 'Site Update / Selector Timeout' && (
+                    <SmartRetryDialog pattern={pattern} />
+                    {pattern.type === 'Structural Changes' && (
                       <Button variant="secondary" size="sm" className="w-full text-xs" asChild>
                         <Link to="/settings"><ArrowRight className="h-3 w-3 mr-1"/> Open Sandbox</Link>
                       </Button>
