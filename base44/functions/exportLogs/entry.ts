@@ -12,7 +12,36 @@ Deno.serve(async (req) => {
     const logs = await base44.entities.ActionLog.list('-timestamp', 3000);
     
     if (format === 'json') {
-      return Response.json({ data: JSON.stringify(logs, null, 2), type: 'application/json' });
+      const failedResults = await base44.entities.TestResult.filter({ status: { $in: ['failed', 'error'] } }, '-tested_at', 2000);
+      const appSettings = await base44.entities.AppSettings.list();
+      const sites = await base44.entities.Site.list();
+      const proxies = await base44.entities.Proxy.list();
+
+      const exportData = {
+        metadata: {
+          exported_at: new Date().toISOString(),
+          description: "Base44 System Diagnostic Export (Logs, Configurations, and Failed Run Results)"
+        },
+        app_settings: appSettings[0] || {},
+        sites: sites,
+        proxies: proxies.map(p => ({ ...p, password: '***', wireguard_config: '***' })), // Mask sensitive fields
+        action_logs: logs,
+        failed_tests: failedResults.map(r => ({
+          run_id: r.run_id,
+          site_key: r.site_key,
+          username: r.username,
+          status: r.status,
+          error_message: r.error_message,
+          final_url: r.final_url,
+          attempts: r.attempts,
+          elapsed_ms: r.elapsed_ms,
+          tested_at: r.tested_at,
+          screenshots: r.screenshots,
+          recording_url: r.recording_url,
+        }))
+      };
+
+      return Response.json({ data: JSON.stringify(exportData, null, 2), type: 'application/json' });
     }
 
     const header = ['timestamp', 'level', 'category', 'site', 'message', 'delta_ms'].join(',');
