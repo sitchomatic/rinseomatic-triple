@@ -6,6 +6,7 @@ import PageHeader from "@/components/shared/PageHeader";
 import StatCard from "@/components/dashboard/StatCard";
 import RecentRuns from "@/components/dashboard/RecentRuns";
 import ProxyHealthMonitor from "@/components/dashboard/ProxyHealthMonitor";
+import SelfHealingTrends from "@/components/dashboard/SelfHealingTrends";
 import { Button } from "@/components/ui/button";
 import { Key, Play, CheckCircle2, AlertTriangle, Activity } from "lucide-react";
 
@@ -69,6 +70,8 @@ export default function Dashboard() {
       </div>
 
       <ProxyHealthMonitor />
+
+      <SelfHealingTrends />
 
       <RecentRuns runs={runs} sites={sites} />
     </div>
