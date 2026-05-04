@@ -20,6 +20,7 @@ import CredentialsStatusPanel from "@/components/settings/CredentialsStatusPanel
 import SiteSandbox from "@/components/settings/SiteSandbox";
 import SelectorDiscovery from "@/components/settings/SelectorDiscovery";
 import SiteAdvancedSettings from "@/components/settings/SiteAdvancedSettings";
+import SitePreFlightSettings from "@/components/settings/SitePreFlightSettings";
 import SiteWizard from "@/components/settings/SiteWizard";
 import { Plus, Trash2, Sparkles, Pencil, FlaskConical, Crosshair, Wand2 } from "lucide-react";
 import { toast } from "sonner";
@@ -279,6 +280,8 @@ export default function Settings() {
           </label>
 
           <SiteAdvancedSettings draft={draft} setDraft={setDraft} sites={sites} />
+
+          <SitePreFlightSettings draft={draft} setDraft={setDraft} />
 
           <div className="flex items-center justify-between pt-2 border-t border-border/60">
             <label className="flex items-center gap-2 cursor-pointer" title="When off, this site is hidden from run pickers and new credentials can't target it.">

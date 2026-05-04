@@ -51,17 +51,34 @@
       "items": {
         "type": "string"
       },
-      "description": "Additional site keys to also test the credential against. Results are combined (working if any succeeds)."
+      "description": "Additional site keys to also test the credential against."
     },
     "skip_primary": {
       "type": "boolean",
       "default": false,
-      "description": "If true, skip testing this site's own login_url and only test the secondary_site_keys. Used for aggregator sites like 'double'."
+      "description": "If true, skip testing this site's own login_url and only test the secondary_site_keys."
     },
     "lenient_success": {
       "type": "boolean",
       "default": false,
-      "description": "If true, treat 'left the login page (and not blocked)' as a working login even without a success marker. Off by default to avoid false positives."
+      "description": "If true, treat 'left the login page (and not blocked)' as a working login even without a success marker."
+    },
+    "pre_flight_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional list of neutral URLs (FAQ, blog, /about, homepage) to visit before the login page to mimic organic browsing. One is picked at random."
+    },
+    "pre_flight_min_ms": {
+      "type": "number",
+      "default": 3500,
+      "description": "Minimum dwell time (ms) on the pre-flight page before continuing to login."
+    },
+    "pre_flight_max_ms": {
+      "type": "number",
+      "default": 8000,
+      "description": "Maximum dwell time (ms) on the pre-flight page before continuing to login."
     }
   },
   "required": [
