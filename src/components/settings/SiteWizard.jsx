@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, CheckCircle2, XCircle, ChevronLeft, ChevronRight, Wand2, AlertTriangle, Eye } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, ChevronLeft, ChevronRight, Wand2, AlertTriangle, Eye, Sparkles } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -39,14 +39,47 @@ export default function SiteWizard({ open, onOpenChange }) {
   const [draft, setDraft] = React.useState(BLANK);
   const [validating, setValidating] = React.useState(false);
   const [validation, setValidation] = React.useState(null);
+  const [suggesting, setSuggesting] = React.useState(false);
+  const [suggestErr, setSuggestErr] = React.useState(null);
 
   React.useEffect(() => {
     if (open) {
       setStep(0);
       setDraft(BLANK);
       setValidation(null);
+      setSuggestErr(null);
     }
   }, [open]);
+
+  const runAutoSuggest = async () => {
+    if (!draft.login_url) return;
+    setSuggesting(true);
+    setSuggestErr(null);
+    try {
+      const res = await base44.functions.invoke("suggestLoginSelectors", {
+        login_url: draft.login_url,
+      });
+      const data = res?.data || res;
+      const best = data?.best || {};
+      const next = { ...draft };
+      if (best.username) next.username_selector = best.username;
+      if (best.password) next.password_selector = best.password;
+      if (best.submit) next.submit_selector = best.submit;
+      setDraft(next);
+      const filled = ["username", "password", "submit"].filter((k) => best[k]).length;
+      if (filled === 0) {
+        setSuggestErr("No confident selector candidates found on this page.");
+        toast.warning("Auto-suggest didn't find clear candidates");
+      } else {
+        toast.success(`Auto-suggest filled ${filled} of 3 selectors`);
+      }
+    } catch (e) {
+      setSuggestErr(e?.message || "Auto-suggest failed");
+      toast.error(e?.message || "Auto-suggest failed");
+    } finally {
+      setSuggesting(false);
+    }
+  };
 
   const update = (patch) => setDraft((d) => ({ ...d, ...patch }));
 
@@ -127,7 +160,29 @@ export default function SiteWizard({ open, onOpenChange }) {
 
           {step === 1 && (
             <>
-              <p className="text-xs text-muted-foreground">CSS selectors for the form fields. We'll validate them live in the next step.</p>
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-xs text-muted-foreground">
+                  CSS selectors for the form fields. Use auto-suggest to fill them
+                  via DOM heuristics, or type them manually. We'll validate live next.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 shrink-0"
+                  onClick={runAutoSuggest}
+                  disabled={suggesting || !draft.login_url}
+                  title={draft.login_url ? "Analyze the login page and auto-fill selectors" : "Enter the login URL on the previous step first"}
+                >
+                  {suggesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                  {suggesting ? "Analyzing…" : "Auto-suggest"}
+                </Button>
+              </div>
+              {suggestErr && (
+                <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">
+                  <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <div className="break-all">{suggestErr}</div>
+                </div>
+              )}
               <Field mono label="Username selector" value={draft.username_selector} onChange={(v) => update({ username_selector: v })} />
               <Field mono label="Password selector" value={draft.password_selector} onChange={(v) => update({ password_selector: v })} />
               <Field mono label="Submit selector" value={draft.submit_selector} onChange={(v) => update({ submit_selector: v })} />
