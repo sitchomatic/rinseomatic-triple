@@ -20,7 +20,8 @@ import CredentialsStatusPanel from "@/components/settings/CredentialsStatusPanel
 import SiteSandbox from "@/components/settings/SiteSandbox";
 import SelectorDiscovery from "@/components/settings/SelectorDiscovery";
 import SiteAdvancedSettings from "@/components/settings/SiteAdvancedSettings";
-import { Plus, Trash2, Sparkles, Pencil, FlaskConical, Crosshair } from "lucide-react";
+import SiteWizard from "@/components/settings/SiteWizard";
+import { Plus, Trash2, Sparkles, Pencil, FlaskConical, Crosshair, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -66,6 +67,7 @@ export default function Settings() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [sandboxSite, setSandboxSite] = useState(null);
   const [showSelectorTool, setShowSelectorTool] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
 
   const saveMut = useMutation({
     mutationFn: async (d) => {
@@ -99,14 +101,23 @@ export default function Settings() {
         title="Settings"
         description="Sites, proxies, and browser defaults. Provide API tokens directly in the app or via environment variables."
         actions={
-          <Button
-            size="sm" variant="outline" className="gap-2"
-            onClick={() => seedMut.mutate()}
-            disabled={seedMut.isPending}
-            title="Creates the starter sites (Joe, Ignition, PPSR, Double). Existing sites are skipped — safe to re-run any time."
-          >
-            <Sparkles className="h-3.5 w-3.5" /> {seedMut.isPending ? "Seeding…" : sites.length === 0 ? "Seed default sites" : "Re-seed missing"}
-          </Button>
+          <>
+            <Button
+              size="sm" variant="outline" className="gap-2"
+              onClick={() => setShowWizard(true)}
+              title="Step-by-step wizard with live selector validation"
+            >
+              <Wand2 className="h-3.5 w-3.5" /> New site wizard
+            </Button>
+            <Button
+              size="sm" variant="outline" className="gap-2"
+              onClick={() => seedMut.mutate()}
+              disabled={seedMut.isPending}
+              title="Creates the starter sites (Joe, Ignition, PPSR, Double). Existing sites are skipped — safe to re-run any time."
+            >
+              <Sparkles className="h-3.5 w-3.5" /> {seedMut.isPending ? "Seeding…" : sites.length === 0 ? "Seed default sites" : "Re-seed missing"}
+            </Button>
+          </>
         }
       />
 
@@ -329,6 +340,8 @@ export default function Settings() {
           }
         }}
       />
+
+      <SiteWizard open={showWizard} onOpenChange={setShowWizard} />
     </div>
   );
 }

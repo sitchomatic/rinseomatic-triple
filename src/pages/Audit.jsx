@@ -8,6 +8,7 @@ import { Trash2, Radio } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
+import RemediationPanel from "@/components/audit/RemediationPanel";
 
 export default function Audit() {
   const [search, setSearch] = React.useState("");
@@ -79,6 +80,8 @@ export default function Audit() {
           </Button>
         }
       />
+
+      <RemediationPanel />
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
         <Stat label="Total" value={logs.length} />

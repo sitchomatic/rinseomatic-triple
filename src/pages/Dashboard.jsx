@@ -5,6 +5,7 @@ import { base44 } from "@/api/base44Client";
 import PageHeader from "@/components/shared/PageHeader";
 import StatCard from "@/components/dashboard/StatCard";
 import RecentRuns from "@/components/dashboard/RecentRuns";
+import ProxyHealthMonitor from "@/components/dashboard/ProxyHealthMonitor";
 import { Button } from "@/components/ui/button";
 import { Key, Play, CheckCircle2, AlertTriangle, Activity } from "lucide-react";
 
@@ -66,6 +67,8 @@ export default function Dashboard() {
         <StatCard label="Failed" value={totals.failed} icon={AlertTriangle} accent="text-rose-300" sub="bad password / blocked" />
         <StatCard label="Active runs" value={totals.active} icon={Activity} accent="text-sky-300" sub={totals.errored ? `${totals.errored} errors total` : "queued or running"} />
       </div>
+
+      <ProxyHealthMonitor />
 
       <RecentRuns runs={runs} sites={sites} />
     </div>
